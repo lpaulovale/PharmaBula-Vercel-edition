@@ -76,7 +76,7 @@ module.exports = async function handler(req, res) {
     // =========================================
     // Step 1: Execute MCP Tools
     // =========================================
-    const toolOutput = await executeTools(message, mode || "patient");
+    const toolOutput = await executeTools(message, mode || "patient", apiKey);
 
     // =========================================
     // Step 2: Build system prompt with context
