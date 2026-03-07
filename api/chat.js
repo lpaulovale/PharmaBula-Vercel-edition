@@ -58,29 +58,29 @@ module.exports = async function handler(req, res) {
 
     try {
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const systemPrompt = mode === "professional" ? SYSTEM_PROMPT_PROFESSIONAL : SYSTEM_PROMPT_PATIENT;
 
-        const systemPrompt = mode === "professional" ? SYSTEM_PROMPT_PROFESSIONAL : SYSTEM_PROMPT_PATIENT;
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.0-flash",
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+    });
 
-        // Load conversation history from MongoDB if available
-        let history = [];
-        const sessions = await getSessionsCollection();
+    // Load conversation history from MongoDB if available
+    let history = [];
+    const sessions = await getSessionsCollection();
 
-        if (sessions && sessionId) {
-            const session = await sessions.findOne({ sessionId });
-            if (session && session.messages) {
-                // Convert stored messages to Gemini chat history format
-                history = session.messages.map((m) => ({
-                    role: m.role,
-                    parts: [{ text: m.text }],
-                }));
-            }
-        }
+    if (sessions && sessionId) {
+      const session = await sessions.findOne({ sessionId });
+      if (session && session.messages) {
+        // Convert stored messages to Gemini chat history format
+        history = session.messages.map((m) => ({
+          role: m.role,
+          parts: [{ text: m.text }],
+        }));
+      }
+    }
 
-        const chat = model.startChat({
-            history,
-            systemInstruction: systemPrompt,
-        });
+    const chat = model.startChat({ history });
 
         const result = await chat.sendMessage(message);
         const responseText = result.response.text();
