@@ -1,74 +1,29 @@
 /**
- * PharmaBula Chat API — MCP-Style Architecture
+ * PharmaBula Chat API — MCP Architecture
  * 
- * Implements the MCP (Model Context Protocol) pattern:
- * 1. Extract drug names from user message
- * 2. Execute MCP tools (search_medication, get_bula_data, check_interactions)
- * 3. Inject tool results as context into the LLM prompt
- * 4. Generate response grounded in real bula data
- * 5. Return response with source citations
+ * Orchestrator that coordinates the MCP components:
+ *   1. prompt_manager  → system prompts by mode
+ *   2. tool_registry   → tool schemas, discovery, execution
+ *   3. resource_manager → data sources (sample data, ANVISA API)
+ *   4. tools.js         → drug extraction + intent detection
+ * 
+ * Flow:
+ *   1. Load conversation history (MongoDB)
+ *   2. Extract drug names (LLM + local fallback)
+ *   3. Detect intent (generics? section? general?)
+ *   4. Execute tools via tool_registry
+ *   5. Build prompt via prompt_manager
+ *   6. Call LLM → return response + sources
  */
 
 const { getSessionsCollection } = require("../lib/db");
-const { executeTools } = require("../lib/tools");
+const { executeTool, listTools } = require("../lib/tool_registry");
+const { getSystemPrompt, buildContextPrompt, getNoDataPrompt } = require("../lib/prompt_manager");
+const { extractDrugNames, localFallbackExtract, detectIntent } = require("../lib/tools");
 
-// HuggingFace Router API (OpenAI-compatible)
+// HuggingFace Router API
 const HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct:cerebras";
 const HF_API_URL = "https://router.huggingface.co/v1/chat/completions";
-
-// MCP Planner Agent — System Prompts
-// Implements strict failure-mode prevention and session discipline per MCP protocol.
-
-const SYSTEM_PROMPT_BASE = `Você é o PharmaBula, um agente planejador MCP (Model Context Protocol) especializado em informações sobre medicamentos do bulário eletrônico brasileiro (ANVISA).
-
-## REGRAS CRÍTICAS — NUNCA VIOLE
-
-### Regra 1: Sem contaminação cruzada de documentos
-Quando múltiplos registros ANVISA existirem para o mesmo princípio ativo (ex: Paracetamol EMS reg. 1.001, Paracetamol Medley reg. 1.002), NUNCA misture informações entre registros diferentes na mesma resposta. Cada afirmação factual deve ser rastreável ao registro específico consultado.
-
-### Regra 2: Sem generalização paramétrica
-Seu conhecimento de treinamento é INVÁLIDO para geração de respostas neste sistema. Toda afirmação farmacológica DEVE ser fundamentada EXCLUSIVAMENTE nos dados da bula fornecidos no CONTEXTO desta sessão. Se os dados não estão no CONTEXTO, diga explicitamente que a informação não foi encontrada.
-
-### Regra 3: Preservação de segurança
-NUNCA omita informações de segurança, mesmo ao simplificar a linguagem. Contraindicações graves (insuficiência hepática, gravidez, restrições pediátricas), alertas ANVISA e tarja preta DEVEM aparecer na resposta integralmente, independente do modo.
-
-### Regra 4: Sem resposta sem dados
-Se nenhum dado de bula foi fornecido no CONTEXTO abaixo, NÃO responda sobre o medicamento. Informe ao usuário que o medicamento não foi encontrado na base de dados.
-
-### Regra 5: Seleção de versão
-Quando o CONTEXTO incluir uma lista de VERSÕES REGISTRADAS NA ANVISA para um medicamento, você DEVE:
-1. Apresentar as versões como uma lista numerada com nome do produto, laboratório e registro
-2. Pedir ao usuário que escolha uma versão (por número ou nome) para obter informações detalhadas
-3. Responder com os dados da bula que já está no CONTEXTO, mas mencionar que se refere a uma versão específica
-4. Se o usuário responder com um número ou nome de uma versão anterior, use o contexto do histórico da conversa para identificar qual medicamento foi selecionado`;
-
-const SYSTEM_PROMPT_PATIENT = SYSTEM_PROMPT_BASE + `
-
-## MODO: PACIENTE
-
-DIRETRIZES ADICIONAIS:
-- Use linguagem SIMPLES e acessível, evitando jargão técnico
-- Priorize informações práticas: para que serve, como usar, efeitos comuns
-- SEMPRE inclua aviso para consultar médico ou farmacêutico
-- Destaque contraindicações de forma clara mas não alarmista
-- Use analogias do cotidiano quando possível
-- Simplifique a LINGUAGEM, nunca o CONTEÚDO de segurança
-- Estruture a resposta com markdown (headers, listas, bold)`;
-
-const SYSTEM_PROMPT_PROFESSIONAL = SYSTEM_PROMPT_BASE + `
-
-## MODO: PROFISSIONAL DE SAÚDE
-
-DIRETRIZES ADICIONAIS:
-- Use terminologia médica/farmacêutica apropriada
-- Inclua mecanismo de ação, farmacocinética e farmacodinâmica quando disponíveis
-- Detalhe ajustes posológicos para populações especiais
-- Liste interações medicamentosas clinicamente significativas
-- Cite classificação ATC e denominação DCB/DCI quando disponíveis
-- Forneça informações sobre monitoramento laboratorial se aplicável
-- Estruture a resposta com markdown (headers, listas, tabelas, bold)
-- Se houver divergências entre genérico e referência, apresente comparação estruturada`;
-
 const MAX_HISTORY_MESSAGES = 6;
 
 module.exports = async function handler(req, res) {
@@ -76,16 +31,10 @@ module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-
-  if (req.method !== "POST") {
-    return res.status(405).json({ detail: "Method not allowed" });
-  }
+  if (req.method === "OPTIONS") return res.status(200).end();
+  if (req.method !== "POST") return res.status(405).json({ detail: "Método não permitido." });
 
   const { message, mode, sessionId } = req.body || {};
-
   if (!message || message.length < 2) {
     return res.status(400).json({ detail: "A mensagem deve ter pelo menos 2 caracteres." });
   }
@@ -97,8 +46,7 @@ module.exports = async function handler(req, res) {
 
   try {
     // =========================================
-    // Step 1: Load conversation history FIRST
-    // (needed so tools can resolve follow-up references)
+    // Step 1: Load conversation history
     // =========================================
     const sessions = await getSessionsCollection();
     let historyMessages = [];
@@ -114,37 +62,128 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Build a context string from recent messages for the drug extractor
+    // Build context string for the drug extractor
     const recentContext = historyMessages
       .map(m => `${m.role === "model" ? "Assistente" : "Usuário"}: ${m.text}`)
       .join("\n");
 
-    // =========================================
-    // Step 2: Execute MCP Tools (with conversation context)
-    // =========================================
     const fullMessageForExtraction = recentContext
       ? `Contexto da conversa anterior:\n${recentContext}\n\nMensagem atual: ${message}`
       : message;
-    const toolOutput = await executeTools(fullMessageForExtraction, mode || "patient", apiKey);
 
     // =========================================
-    // Step 3: Build system prompt with bula context
+    // Step 2: Extract drug names
     // =========================================
-    const basePrompt = mode === "professional"
-      ? SYSTEM_PROMPT_PROFESSIONAL
-      : SYSTEM_PROMPT_PATIENT;
+    let drugNames = await extractDrugNames(fullMessageForExtraction, apiKey);
+    console.log("[MCP] Drugs detected by LLM:", drugNames);
 
-    let systemPrompt = basePrompt;
+    if (drugNames.length === 0) {
+      drugNames = localFallbackExtract(fullMessageForExtraction);
+      console.log("[MCP] Drugs detected by local fallback:", drugNames);
+    }
 
-    if (toolOutput.context) {
-      systemPrompt += `\n\nCONTEXTO DAS BULAS (dados oficiais):\n${toolOutput.context}`;
+    // Last resort: try each word against sample data
+    if (drugNames.length === 0) {
+      const words = message.toLowerCase().split(/[\s,.;:!?]+/).filter(w => w.length > 3);
+      for (const word of words) {
+        const result = await executeTool("get_bula_data", { drug_name: word, mode: mode || "patient" });
+        if (result.found) {
+          drugNames.push(word);
+          break;
+        }
+      }
+    }
+
+    // =========================================
+    // Step 3: Detect intent
+    // =========================================
+    const intent = detectIntent(fullMessageForExtraction);
+    console.log("[MCP] Intent:", intent.type, intent.section ? `(${intent.section})` : "");
+
+    // =========================================
+    // Step 4: Execute tools via registry (ROUTER)
+    // =========================================
+    const toolResults = [];
+    const toolLog = []; // Session discipline: log every tool call
+
+    if (drugNames.length === 0) {
+      // No drug found — nothing to tool-call
+      console.log("[MCP] No drugs detected, skipping tool execution.");
+
+    } else if (drugNames.length >= 2) {
+      // Multiple drugs → check interactions
+      const interactionResult = await executeTool("check_interactions", {
+        drugs: drugNames, mode: mode || "patient",
+      });
+      toolResults.push(interactionResult);
+      toolLog.push({ tool: "check_interactions", args: { drugs: drugNames } });
+
+      for (const name of drugNames) {
+        const bulaResult = await executeTool("get_bula_data", {
+          drug_name: name, mode: mode || "patient",
+        });
+        toolResults.push(bulaResult);
+        toolLog.push({ tool: "get_bula_data", args: { drug_name: name } });
+      }
+
     } else {
-      systemPrompt += `\n\nNenhum medicamento foi identificado ou encontrado na base de dados. Informe ao usuário que você não encontrou dados de bula para esta consulta e sugira que ele digite o nome do medicamento diretamente. NÃO use conhecimento geral — responda APENAS com dados das bulas.`;
+      // Single drug → ROUTE based on intent
+      const drugName = drugNames[0];
+
+      if (intent.type === "generics") {
+        // ROUTE A: Find generic versions → present list
+        const genericsResult = await executeTool("find_generic_versions", { drug_name: drugName });
+        toolResults.push(genericsResult);
+        toolLog.push({ tool: "find_generic_versions", args: { drug_name: drugName } });
+
+        // Also get base bula for context
+        const bulaResult = await executeTool("get_bula_data", {
+          drug_name: drugName, mode: mode || "patient",
+        });
+        toolResults.push(bulaResult);
+        toolLog.push({ tool: "get_bula_data", args: { drug_name: drugName } });
+
+      } else if (intent.type === "section" && intent.section) {
+        // ROUTE B: Extract specific section
+        const sectionResult = await executeTool("get_section", {
+          drug_name: drugName, section: intent.section, mode: mode || "patient",
+        });
+        toolResults.push(sectionResult);
+        toolLog.push({ tool: "get_section", args: { drug_name: drugName, section: intent.section } });
+
+        // If section not found, fallback to full bula
+        if (!sectionResult.found) {
+          const bulaResult = await executeTool("get_bula_data", {
+            drug_name: drugName, mode: mode || "patient",
+          });
+          toolResults.push(bulaResult);
+          toolLog.push({ tool: "get_bula_data", args: { drug_name: drugName } });
+        }
+
+      } else {
+        // ROUTE C: General query → full bula
+        const bulaResult = await executeTool("get_bula_data", {
+          drug_name: drugName, mode: mode || "patient",
+        });
+        toolResults.push(bulaResult);
+        toolLog.push({ tool: "get_bula_data", args: { drug_name: drugName } });
+      }
+    }
+
+    // =========================================
+    // Step 5: Build prompt via prompt_manager
+    // =========================================
+    let systemPrompt = getSystemPrompt(mode || "patient");
+    const context = buildContextPrompt(toolResults);
+
+    if (context) {
+      systemPrompt += `\n\nCONTEXTO DAS BULAS (dados oficiais):\n${context}`;
+    } else {
+      systemPrompt += getNoDataPrompt();
     }
 
     const messages = [{ role: "system", content: systemPrompt }];
 
-    // Add conversation history to LLM messages
     for (const m of historyMessages) {
       messages.push({
         role: m.role === "model" ? "assistant" : "user",
@@ -155,9 +194,9 @@ module.exports = async function handler(req, res) {
     messages.push({ role: "user", content: message });
 
     // =========================================
-    // Step 4: Call LLM (HuggingFace)
+    // Step 6: Call LLM
     // =========================================
-    const hfResponse = await fetch(HF_API_URL, {
+    const llmRes = await fetch(HF_API_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -166,74 +205,93 @@ module.exports = async function handler(req, res) {
       body: JSON.stringify({
         model: HF_MODEL,
         messages,
-        max_tokens: 1500,
+        max_tokens: 1024,
         temperature: 0.3,
       }),
     });
 
-    if (!hfResponse.ok) {
-      const errorBody = await hfResponse.text();
-      console.error("HuggingFace API error:", hfResponse.status, errorBody);
-
-      if (hfResponse.status === 429) {
-        return res.status(429).json({
-          detail: "Limite de uso atingido. Aguarde um momento e tente novamente.",
-        });
-      }
-      if (hfResponse.status === 503) {
-        return res.status(503).json({
-          detail: "Modelo está carregando. Tente novamente em ~20 segundos.",
-        });
-      }
-      throw new Error(`HuggingFace API retornou status ${hfResponse.status}: ${errorBody}`);
+    if (!llmRes.ok) {
+      const errText = await llmRes.text();
+      console.error("LLM API error:", llmRes.status, errText);
+      return res.status(502).json({ detail: `Erro na API do LLM: ${llmRes.status}` });
     }
 
-    const data = await hfResponse.json();
-    const responseText = data.choices?.[0]?.message?.content || "Não foi possível gerar uma resposta.";
+    const llmData = await llmRes.json();
+    const responseText = llmData.choices?.[0]?.message?.content || "Desculpe, não consegui gerar uma resposta.";
 
     // =========================================
-    // Step 5: Save to MongoDB (fire and forget)
+    // Step 7: Build sources
+    // =========================================
+    const sources = [];
+    const seenNames = new Set();
+
+    for (const r of toolResults) {
+      if (r.tool === "get_bula_data" && r.found && r.data) {
+        const name = `Bula ${r.data.name} - ANVISA`;
+        if (!seenNames.has(name)) {
+          seenNames.add(name);
+          sources.push(name);
+        }
+      }
+      if (r.tool === "get_section" && r.found && r.data) {
+        const name = `Bula ${r.data.name} - ANVISA (${r.data.section})`;
+        if (!seenNames.has(name)) {
+          seenNames.add(name);
+          sources.push(name);
+        }
+      }
+      if (r.tool === "find_generic_versions" && r.versionsFound > 0) {
+        for (const v of r.versions) {
+          const name = `${v.name} (${v.company})`;
+          if (!seenNames.has(name)) {
+            seenNames.add(name);
+            sources.push(name);
+          }
+        }
+      }
+    }
+
+    // =========================================
+    // Step 8: Save to session + respond
     // =========================================
     if (sessions && sessionId) {
-      const newMessages = [
-        { role: "user", text: message, timestamp: new Date() },
-        { role: "model", text: responseText, timestamp: new Date() },
-      ];
-
-      sessions.updateOne(
-        { sessionId },
-        {
-          $push: { messages: { $each: newMessages } },
-          $set: { lastActive: new Date(), mode: mode || "patient" },
-          $setOnInsert: { createdAt: new Date() },
-        },
-        { upsert: true }
-      ).catch(err => console.warn("MongoDB save failed:", err.message));
+      try {
+        await sessions.updateOne(
+          { sessionId },
+          {
+            $push: {
+              messages: {
+                $each: [
+                  { role: "user", text: message, timestamp: new Date() },
+                  { role: "model", text: responseText, timestamp: new Date() },
+                ],
+              },
+            },
+            $set: { updatedAt: new Date(), mode },
+            $setOnInsert: { createdAt: new Date() },
+          },
+          { upsert: true }
+        );
+      } catch (dbErr) {
+        console.warn("MongoDB save failed:", dbErr.message);
+      }
     }
 
-    // =========================================
-    // Step 6: Return response with sources
-    // =========================================
     return res.status(200).json({
       response: responseText,
-      mode: mode || "patient",
-      framework: "mcp-llama-3.1",
-      sources: toolOutput.sources.map(s => s.name),
-      source_files: toolOutput.sources.map(s => ({
-        name: s.name,
-        drug_id: s.drug_id,
-        pdf_url: `/api/pdfs/${s.drug_id}`,
-      })),
+      sources,
       metadata: {
-        drugsDetected: toolOutput.drugsDetected,
-        toolsExecuted: toolOutput.toolResults.map(r => r.tool),
-        bulaType: mode === "professional" ? "profissional" : "paciente",
+        mode: mode || "patient",
+        drugsDetected: drugNames,
+        intent: intent.type,
+        section: intent.section,
+        toolsExecuted: toolLog,
+        availableTools: listTools().map(t => t.name),
       },
     });
-  } catch (error) {
-    console.error("API error:", error);
-    return res.status(500).json({
-      detail: `Erro ao processar sua mensagem: ${error.message}`,
-    });
+
+  } catch (err) {
+    console.error("Chat handler error:", err);
+    return res.status(500).json({ detail: "Erro interno do servidor.", error: err.message });
   }
 };
