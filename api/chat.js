@@ -1,7 +1,7 @@
 const { getSessionsCollection } = require("../lib/db");
 
 // HuggingFace Router API (OpenAI-compatible)
-const HF_MODEL = "google/gemma-2-2b-it";
+const HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct:cerebras";
 const HF_API_URL = "https://router.huggingface.co/v1/chat/completions";
 
 const SYSTEM_PROMPT_PATIENT = `Você é o PharmaBula, assistente de medicamentos brasileiros. Use linguagem simples. Inclua indicações, contraindicações, efeitos colaterais e posologia. Sempre avise para consultar um profissional de saúde. Responda em português do Brasil, texto plano com bullet points.`;
