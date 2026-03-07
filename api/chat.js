@@ -139,7 +139,7 @@ module.exports = async function handler(req, res) {
     if (toolOutput.context) {
       systemPrompt += `\n\nCONTEXTO DAS BULAS (dados oficiais):\n${toolOutput.context}`;
     } else {
-      systemPrompt += `\n\nNenhum medicamento específico foi identificado na pergunta. Responda com base em seu conhecimento geral sobre medicamentos brasileiros, mas sempre recomende consultar a bula oficial.`;
+      systemPrompt += `\n\nNenhum medicamento foi identificado ou encontrado na base de dados. Informe ao usuário que você não encontrou dados de bula para esta consulta e sugira que ele digite o nome do medicamento diretamente. NÃO use conhecimento geral — responda APENAS com dados das bulas.`;
     }
 
     const messages = [{ role: "system", content: systemPrompt }];
