@@ -1,7 +1,8 @@
 const { getSessionsCollection } = require("../lib/db");
 
-const HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
-const HF_API_URL = `https://api-inference.huggingface.co/models/${HF_MODEL}/v1/chat/completions`;
+// HuggingFace Inference API (router-based, picks best available provider)
+const HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
+const HF_API_URL = `https://router.huggingface.co/hf-inference/models/${HF_MODEL}/v1/chat/completions`;
 
 const SYSTEM_PROMPT_PATIENT = `Você é o PharmaBula, assistente de medicamentos brasileiros. Use linguagem simples. Inclua indicações, contraindicações, efeitos colaterais e posologia. Sempre avise para consultar um profissional de saúde. Responda em português do Brasil, texto plano com bullet points.`;
 
@@ -36,7 +37,7 @@ module.exports = async function handler(req, res) {
   try {
     const systemPrompt = mode === "professional" ? SYSTEM_PROMPT_PROFESSIONAL : SYSTEM_PROMPT_PATIENT;
 
-    // Build the messages array with system prompt
+    // Build messages array
     const messages = [{ role: "system", content: systemPrompt }];
 
     // Load conversation history from MongoDB if available
@@ -55,10 +56,9 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Add the current user message
     messages.push({ role: "user", content: message });
 
-    // Call HuggingFace Inference API (OpenAI-compatible chat completions)
+    // Call HuggingFace Inference API
     const hfResponse = await fetch(HF_API_URL, {
       method: "POST",
       headers: {
@@ -87,7 +87,7 @@ module.exports = async function handler(req, res) {
           detail: "Modelo está carregando. Tente novamente em ~20 segundos.",
         });
       }
-      throw new Error(`HuggingFace API retornou status ${hfResponse.status}`);
+      throw new Error(`HuggingFace API retornou status ${hfResponse.status}: ${errorBody}`);
     }
 
     const data = await hfResponse.json();
@@ -114,7 +114,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       response: responseText,
       mode: mode || "patient",
-      framework: "llama-3-70b",
+      framework: "llama-3.1-8b",
       sources: [],
       source_files: [],
       metadata: {},
