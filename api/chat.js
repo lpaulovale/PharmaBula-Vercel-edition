@@ -161,12 +161,22 @@ module.exports = async function handler(req, res) {
         }
 
       } else {
-        // ROUTE C: General query → full bula
+        // ROUTE C: General query → local bula first, then ANVISA PDF
         const bulaResult = await executeTool("get_bula_data", {
           drug_name: drugName, mode: mode || "patient",
         });
         toolResults.push(bulaResult);
         toolLog.push({ tool: "get_bula_data", args: { drug_name: drugName } });
+
+        // If local data not found, try fetching real bula from ANVISA
+        if (!bulaResult.found) {
+          console.log(`[MCP] Local bula not found for '${drugName}', trying ANVISA PDF...`);
+          const anvisaResult = await executeTool("fetch_anvisa_bula", {
+            drug_name: drugName, mode: mode || "patient",
+          });
+          toolResults.push(anvisaResult);
+          toolLog.push({ tool: "fetch_anvisa_bula", args: { drug_name: drugName } });
+        }
       }
     }
 
