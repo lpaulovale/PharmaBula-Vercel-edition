@@ -1117,7 +1117,9 @@
                     richHtml += '<div style="margin-top:12px;padding:8px 12px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);font-size:13px;">';
                     richHtml += '<strong style="color:var(--accent-green);">📋 Fontes:</strong> ';
                     const sourceLinks = data.sources.map(src => {
-                        const drugName = src.replace('Bula ', '').replace(' - ANVISA', '').trim();
+                        // Extract just the active ingredient name (strip "Bula ", dosage, " - ANVISA")
+                        let drugName = src.replace('Bula ', '').replace(' - ANVISA', '').trim();
+                        drugName = drugName.replace(/\s*\d+\s*mg\b/gi, '').trim(); // Remove dosage like "500mg"
                         const anvisaUrl = 'https://consultas.anvisa.gov.br/#/bulario/q/?nomeProduto=' + encodeURIComponent(drugName);
                         return '<a href="' + anvisaUrl + '" target="_blank" rel="noopener" style="color:var(--accent-green);text-decoration:underline;">' + src + '</a>';
                     });
