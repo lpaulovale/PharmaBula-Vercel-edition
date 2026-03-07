@@ -1,4 +1,4 @@
-const { findSession, saveMessages } = require("../lib/db");
+const { getSessionsCollection } = require("../lib/db");
 
 // HuggingFace Router API (OpenAI-compatible)
 const HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct:cerebras";
@@ -38,17 +38,23 @@ module.exports = async function handler(req, res) {
     const systemPrompt = mode === "professional" ? SYSTEM_PROMPT_PROFESSIONAL : SYSTEM_PROMPT_PATIENT;
     const messages = [{ role: "system", content: systemPrompt }];
 
-    // Load conversation history from MongoDB Data API
-    if (sessionId) {
-      const session = await findSession(sessionId);
-      if (session && session.messages) {
-        const recentMessages = session.messages.slice(-MAX_HISTORY_MESSAGES);
-        for (const m of recentMessages) {
-          messages.push({
-            role: m.role === "model" ? "assistant" : "user",
-            content: m.text,
-          });
+    // Load conversation history from MongoDB if available
+    const sessions = await getSessionsCollection();
+
+    if (sessions && sessionId) {
+      try {
+        const session = await sessions.findOne({ sessionId });
+        if (session && session.messages) {
+          const recentMessages = session.messages.slice(-MAX_HISTORY_MESSAGES);
+          for (const m of recentMessages) {
+            messages.push({
+              role: m.role === "model" ? "assistant" : "user",
+              content: m.text,
+            });
+          }
         }
+      } catch (dbErr) {
+        console.warn("MongoDB findOne failed (continuing without history):", dbErr.message);
       }
     }
 
@@ -70,32 +76,42 @@ module.exports = async function handler(req, res) {
     });
 
     if (!hfResponse.ok) {
-      const errorBody = await hfResponse.text();
-      console.error("HuggingFace API error:", hfResponse.status, errorBody);
-
-      if (hfResponse.status === 429) {
-        return res.status(429).json({
-          detail: "Limite de uso atingido. Aguarde um momento e tente novamente.",
-        });
+        const errorBody = await hfResponse.text();
+        console.error("HuggingFace API error:", hfResponse.status, errorBody);
+  
+        if (hfResponse.status === 429) {
+          return res.status(429).json({
+            detail: "Limite de uso atingido. Aguarde um momento e tente novamente.",
+          });
+        }
+        if (hfResponse.status === 503) {
+          return res.status(503).json({
+            detail: "Modelo está carregando. Tente novamente em ~20 segundos.",
+          });
+        }
+        throw new Error(`HuggingFace API retornou status ${hfResponse.status}: ${errorBody}`);
       }
-      if (hfResponse.status === 503) {
-        return res.status(503).json({
-          detail: "Modelo está carregando. Tente novamente em ~20 segundos.",
-        });
-      }
-      throw new Error(`HuggingFace API retornou status ${hfResponse.status}: ${errorBody}`);
-    }
 
     const data = await hfResponse.json();
     const responseText = data.choices?.[0]?.message?.content || "Não foi possível gerar uma resposta.";
 
-    // Save exchange to MongoDB via Data API (fire and forget)
-    if (sessionId) {
+    // Save the exchange to MongoDB
+    if (sessions && sessionId) {
       const newMessages = [
-        { role: "user", text: message, timestamp: new Date().toISOString() },
-        { role: "model", text: responseText, timestamp: new Date().toISOString() },
+        { role: "user", text: message, timestamp: new Date() },
+        { role: "model", text: responseText, timestamp: new Date() },
       ];
-      saveMessages(sessionId, newMessages, mode || "patient").catch(() => {});
+
+      // Fire and forget so we don't slow down response if db is slow
+      sessions.updateOne(
+        { sessionId },
+        {
+          $push: { messages: { $each: newMessages } },
+          $set: { lastActive: new Date(), mode: mode || "patient" },
+          $setOnInsert: { createdAt: new Date() },
+        },
+        { upsert: true }
+      ).catch(err => console.warn("MongoDB updateOne failed:", err.message));
     }
 
     return res.status(200).json({
