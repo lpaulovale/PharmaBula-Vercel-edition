@@ -901,8 +901,8 @@
                 </div>
                 <div class="footer">
                     <span id="framework-badge"
-                        style="background: var(--accent-green); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-right: 8px;">LLAMA 3.1</span>
-                    PharmaBula pode apresentar informações imprecisas. Confirme com um profissional de saúde.
+                        style="background: var(--accent-green); color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px; margin-right: 8px;">MCP + LLAMA 3.1</span>
+                    PharmaBula utiliza dados de bulas ANVISA. Confirme com um profissional de saúde.
                 </div>
             </div>
         </main>
@@ -1112,8 +1112,16 @@
                 // Render markdown to HTML
                 let richHtml = marked.parse(responseText);
 
+                // Add source citations if available
+                if (data.sources && data.sources.length > 0) {
+                    richHtml += '<div style="margin-top:12px;padding:8px 12px;background:rgba(16,185,129,0.08);border-radius:8px;border:1px solid rgba(16,185,129,0.2);font-size:13px;">';
+                    richHtml += '<strong style="color:var(--accent-green);">📋 Fontes:</strong> ';
+                    richHtml += data.sources.join(' • ');
+                    richHtml += '</div>';
+                }
+
                 // Add disclaimer
-                richHtml += '<div class="disclaimer-text">⚠️ As informações são baseadas em conhecimento geral sobre medicamentos. Sempre consulte um profissional de saúde.</div>';
+                richHtml += '<div class="disclaimer-text">⚠️ Informações baseadas em bulas oficiais ANVISA. Sempre consulte um profissional de saúde.</div>';
 
                 addMessage(responseText, 'assistant', richHtml);
 
