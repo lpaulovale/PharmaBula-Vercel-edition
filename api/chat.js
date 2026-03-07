@@ -97,12 +97,38 @@ module.exports = async function handler(req, res) {
 
   try {
     // =========================================
-    // Step 1: Execute MCP Tools
+    // Step 1: Load conversation history FIRST
+    // (needed so tools can resolve follow-up references)
     // =========================================
-    const toolOutput = await executeTools(message, mode || "patient", apiKey);
+    const sessions = await getSessionsCollection();
+    let historyMessages = [];
+
+    if (sessions && sessionId) {
+      try {
+        const session = await sessions.findOne({ sessionId });
+        if (session && session.messages) {
+          historyMessages = session.messages.slice(-MAX_HISTORY_MESSAGES);
+        }
+      } catch (dbErr) {
+        console.warn("MongoDB history load failed:", dbErr.message);
+      }
+    }
+
+    // Build a context string from recent messages for the drug extractor
+    const recentContext = historyMessages
+      .map(m => `${m.role === "model" ? "Assistente" : "Usuário"}: ${m.text}`)
+      .join("\n");
 
     // =========================================
-    // Step 2: Build system prompt with context
+    // Step 2: Execute MCP Tools (with conversation context)
+    // =========================================
+    const fullMessageForExtraction = recentContext
+      ? `Contexto da conversa anterior:\n${recentContext}\n\nMensagem atual: ${message}`
+      : message;
+    const toolOutput = await executeTools(fullMessageForExtraction, mode || "patient", apiKey);
+
+    // =========================================
+    // Step 3: Build system prompt with bula context
     // =========================================
     const basePrompt = mode === "professional"
       ? SYSTEM_PROMPT_PROFESSIONAL
@@ -118,26 +144,12 @@ module.exports = async function handler(req, res) {
 
     const messages = [{ role: "system", content: systemPrompt }];
 
-    // =========================================
-    // Step 3: Load conversation history
-    // =========================================
-    const sessions = await getSessionsCollection();
-
-    if (sessions && sessionId) {
-      try {
-        const session = await sessions.findOne({ sessionId });
-        if (session && session.messages) {
-          const recentMessages = session.messages.slice(-MAX_HISTORY_MESSAGES);
-          for (const m of recentMessages) {
-            messages.push({
-              role: m.role === "model" ? "assistant" : "user",
-              content: m.text,
-            });
-          }
-        }
-      } catch (dbErr) {
-        console.warn("MongoDB history load failed:", dbErr.message);
-      }
+    // Add conversation history to LLM messages
+    for (const m of historyMessages) {
+      messages.push({
+        role: m.role === "model" ? "assistant" : "user",
+        content: m.text,
+      });
     }
 
     messages.push({ role: "user", content: message });
