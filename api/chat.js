@@ -1,8 +1,8 @@
 const { getSessionsCollection } = require("../lib/db");
 
-// HuggingFace Inference API (router-based, picks best available provider)
-const HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct";
-const HF_API_URL = "https://router.huggingface.co/hf-inference/v1/chat/completions";
+// HuggingFace Router API (OpenAI-compatible)
+const HF_MODEL = "google/gemma-2-2b-it";
+const HF_API_URL = "https://router.huggingface.co/v1/chat/completions";
 
 const SYSTEM_PROMPT_PATIENT = `Você é o PharmaBula, assistente de medicamentos brasileiros. Use linguagem simples. Inclua indicações, contraindicações, efeitos colaterais e posologia. Sempre avise para consultar um profissional de saúde. Responda em português do Brasil, texto plano com bullet points.`;
 
@@ -58,7 +58,7 @@ module.exports = async function handler(req, res) {
 
     messages.push({ role: "user", content: message });
 
-    // Call HuggingFace Inference API
+    // Call HuggingFace Router API (OpenAI-compatible)
     const hfResponse = await fetch(HF_API_URL, {
       method: "POST",
       headers: {
@@ -114,7 +114,7 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       response: responseText,
       mode: mode || "patient",
-      framework: "llama-3.1-8b",
+      framework: "gemma-2",
       sources: [],
       source_files: [],
       metadata: {},
