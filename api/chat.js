@@ -1,12 +1,12 @@
-const { getSessionsCollection } = require("../lib/db");
+const { findSession, saveMessages } = require("../lib/db");
 
 // HuggingFace Router API (OpenAI-compatible)
 const HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct:cerebras";
 const HF_API_URL = "https://router.huggingface.co/v1/chat/completions";
 
-const SYSTEM_PROMPT_PATIENT = `Você é o PharmaBula, assistente de medicamentos brasileiros. Use linguagem simples. Inclua indicações, contraindicações, efeitos colaterais e posologia. Sempre avise para consultar um profissional de saúde. Responda em português do Brasil, texto plano com bullet points.`;
+const SYSTEM_PROMPT_PATIENT = `Você é o PharmaBula, assistente de medicamentos brasileiros. Use linguagem simples. Inclua indicações, contraindicações, efeitos colaterais e posologia. Sempre avise para consultar um profissional de saúde. Responda em português do Brasil, use markdown para formatar: headers, bold, listas, etc.`;
 
-const SYSTEM_PROMPT_PROFESSIONAL = `Você é o PharmaBula, assistente farmacêutico especializado. Use terminologia técnica: princípios ativos, mecanismos de ação, farmacocinética, interações, classificação ATC, protocolos PCDT/SUS, nomenclatura DCB/DCI. Responda em português do Brasil, texto plano com bullet points.`;
+const SYSTEM_PROMPT_PROFESSIONAL = `Você é o PharmaBula, assistente farmacêutico especializado. Use terminologia técnica: princípios ativos, mecanismos de ação, farmacocinética, interações, classificação ATC, protocolos PCDT/SUS, nomenclatura DCB/DCI. Responda em português do Brasil, use markdown para formatar: headers, bold, listas, tabelas, etc.`;
 
 const MAX_HISTORY_MESSAGES = 6;
 
@@ -36,15 +36,11 @@ module.exports = async function handler(req, res) {
 
   try {
     const systemPrompt = mode === "professional" ? SYSTEM_PROMPT_PROFESSIONAL : SYSTEM_PROMPT_PATIENT;
-
-    // Build messages array
     const messages = [{ role: "system", content: systemPrompt }];
 
-    // Load conversation history from MongoDB if available
-    const sessions = await getSessionsCollection();
-
-    if (sessions && sessionId) {
-      const session = await sessions.findOne({ sessionId });
+    // Load conversation history from MongoDB Data API
+    if (sessionId) {
+      const session = await findSession(sessionId);
       if (session && session.messages) {
         const recentMessages = session.messages.slice(-MAX_HISTORY_MESSAGES);
         for (const m of recentMessages) {
@@ -58,7 +54,7 @@ module.exports = async function handler(req, res) {
 
     messages.push({ role: "user", content: message });
 
-    // Call HuggingFace Router API (OpenAI-compatible)
+    // Call HuggingFace Router API
     const hfResponse = await fetch(HF_API_URL, {
       method: "POST",
       headers: {
@@ -93,28 +89,19 @@ module.exports = async function handler(req, res) {
     const data = await hfResponse.json();
     const responseText = data.choices?.[0]?.message?.content || "Não foi possível gerar uma resposta.";
 
-    // Save the exchange to MongoDB
-    if (sessions && sessionId) {
+    // Save exchange to MongoDB via Data API (fire and forget)
+    if (sessionId) {
       const newMessages = [
-        { role: "user", text: message, timestamp: new Date() },
-        { role: "model", text: responseText, timestamp: new Date() },
+        { role: "user", text: message, timestamp: new Date().toISOString() },
+        { role: "model", text: responseText, timestamp: new Date().toISOString() },
       ];
-
-      await sessions.updateOne(
-        { sessionId },
-        {
-          $push: { messages: { $each: newMessages } },
-          $set: { lastActive: new Date(), mode: mode || "patient" },
-          $setOnInsert: { createdAt: new Date() },
-        },
-        { upsert: true }
-      );
+      saveMessages(sessionId, newMessages, mode || "patient").catch(() => {});
     }
 
     return res.status(200).json({
       response: responseText,
       mode: mode || "patient",
-      framework: "gemma-2",
+      framework: "llama-3.1-8b",
       sources: [],
       source_files: [],
       metadata: {},
