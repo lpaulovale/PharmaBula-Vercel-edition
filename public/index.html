@@ -1241,7 +1241,7 @@
                         msgContent.insertAdjacentHTML('beforeend', judgeHtml);
 
                         // Fire evaluate call
-                        fetch(API_URL.replace('/chat', '/evaluate'), {
+                        fetch(API_BASE + '/evaluate', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
