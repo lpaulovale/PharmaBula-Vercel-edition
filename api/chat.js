@@ -1,29 +1,26 @@
 /**
- * PharmaBula Chat API — MCP Architecture
- * 
- * Orchestrator that coordinates the MCP components:
- *   1. prompt_manager  → system prompts by mode
- *   2. tool_registry   → tool schemas, discovery, execution
- *   3. resource_manager → data sources (sample data, ANVISA API)
- *   4. tools.js         → drug extraction + intent detection
- * 
+ * PharmaBula Chat API — Planner-Based Architecture
+ *
+ * Simplified orchestrator using LLM planner:
+ *   1. planner       → Analyzes question, returns JSON execution plan
+ *   2. tool_registry → Executes tools from plan (PARALLEL)
+ *   3. prompt_manager → Builds system prompt with tool results
+ *   4. llm_client    → Generates final response
+ *
  * Flow:
  *   1. Load conversation history (MongoDB)
- *   2. Extract drug names (LLM + local fallback)
- *   3. Detect intent (generics? section? general?)
- *   4. Execute tools via tool_registry
- *   5. Build prompt via prompt_manager
- *   6. Call LLM → return response + sources
+ *   2. Plan query (LLM) → { drugs, tools[], needs_clarification }
+ *   3. Execute tools from plan (PARALLEL with Promise.all)
+ *   4. Build prompt via prompt_manager
+ *   5. Call LLM → return response + sources
  */
 
 const { getSessionsCollection } = require("../lib/db");
 const { executeTool, listTools } = require("../lib/tool_registry");
 const { getSystemPrompt, buildContextPrompt, getNoDataPrompt } = require("../lib/prompt_manager");
-const { extractDrugNames, localFallbackExtract, detectIntent } = require("../lib/tools");
+const { planQuery } = require("../lib/planner");
+const { chat, chatWithModel } = require("../lib/llm_client");
 
-// HuggingFace Router API
-const HF_MODEL = "meta-llama/Llama-3.1-8B-Instruct:cerebras";
-const HF_API_URL = "https://router.huggingface.co/v1/chat/completions";
 const MAX_HISTORY_MESSAGES = 6;
 
 module.exports = async function handler(req, res) {
@@ -34,14 +31,9 @@ module.exports = async function handler(req, res) {
   if (req.method === "OPTIONS") return res.status(200).end();
   if (req.method !== "POST") return res.status(405).json({ detail: "Método não permitido." });
 
-  const { message, mode, sessionId } = req.body || {};
+  const { message, mode = "patient", sessionId, model: runtimeModel } = req.body || {};
   if (!message || message.length < 2) {
     return res.status(400).json({ detail: "A mensagem deve ter pelo menos 2 caracteres." });
-  }
-
-  const apiKey = process.env.HF_TOKEN;
-  if (!apiKey) {
-    return res.status(500).json({ detail: "HF_TOKEN não configurado no servidor." });
   }
 
   try {
@@ -62,133 +54,61 @@ module.exports = async function handler(req, res) {
       }
     }
 
-    // Build context string for the drug extractor
-    const recentContext = historyMessages
-      .map(m => `${m.role === "model" ? "Assistente" : "Usuário"}: ${m.text}`)
-      .join("\n");
-
-    const fullMessageForExtraction = recentContext
-      ? `Contexto da conversa anterior:\n${recentContext}\n\nMensagem atual: ${message}`
-      : message;
-
     // =========================================
-    // Step 2: Extract drug names
+    // Step 2: Plan query (LLM returns JSON plan)
     // =========================================
-    let drugNames = await extractDrugNames(fullMessageForExtraction, apiKey);
-    console.log("[MCP] Drugs detected by LLM:", drugNames);
+    const plan = await planQuery(message, mode, historyMessages);
+    console.log("[Planner] Plan received:", JSON.stringify(plan, null, 2));
 
-    if (drugNames.length === 0) {
-      drugNames = localFallbackExtract(fullMessageForExtraction);
-      console.log("[MCP] Drugs detected by local fallback:", drugNames);
-    }
-
-    // Last resort: try each word against sample data
-    if (drugNames.length === 0) {
-      const words = message.toLowerCase().split(/[\s,.;:!?]+/).filter(w => w.length > 3);
-      for (const word of words) {
-        const result = await executeTool("get_bula_data", { drug_name: word, mode: mode || "patient" });
-        if (result.found) {
-          drugNames.push(word);
-          break;
-        }
-      }
+    // If clarification needed, return early
+    if (plan.needs_clarification) {
+      return res.status(200).json({
+        response: plan.needs_clarification,
+        sources: [],
+        metadata: {
+          mode,
+          drugsDetected: plan.drugs || [],
+          clarificationNeeded: true,
+          availableTools: listTools().map(t => t.name),
+          evaluateUrl: "/api/evaluate",
+        },
+      });
     }
 
     // =========================================
-    // Step 3: Detect intent
-    // =========================================
-    const intent = detectIntent(fullMessageForExtraction);
-    console.log("[MCP] Intent:", intent.type, intent.section ? `(${intent.section})` : "");
-
-    // =========================================
-    // Step 4: Execute tools via registry (ROUTER)
+    // Step 3: Execute tools from plan (PARALLEL)
     // =========================================
     const toolResults = [];
-    const toolLog = []; // Session discipline: log every tool call
+    const toolLog = [];
 
-    if (drugNames.length === 0) {
-      // No drug found — nothing to tool-call
-      console.log("[MCP] No drugs detected, skipping tool execution.");
-
-    } else if (drugNames.length >= 2) {
-      // Multiple drugs → check interactions
-      const interactionResult = await executeTool("check_interactions", {
-        drugs: drugNames, mode: mode || "patient",
-      });
-      toolResults.push(interactionResult);
-      toolLog.push({ tool: "check_interactions", args: { drugs: drugNames } });
-
-      for (const name of drugNames) {
-        const bulaResult = await executeTool("get_bula_data", {
-          drug_name: name, mode: mode || "patient",
-        });
-        toolResults.push(bulaResult);
-        toolLog.push({ tool: "get_bula_data", args: { drug_name: name } });
-      }
-
+    if (plan.tools.length === 0) {
+      console.log("[MCP] No tools to execute.");
     } else {
-      // Single drug → ROUTE based on intent
-      const drugName = drugNames[0];
+      console.log(`[MCP] Executing ${plan.tools.length} tool(s) in parallel...`);
 
-      if (intent.type === "generics") {
-        // ROUTE A: Find generic versions → present list
-        const genericsResult = await executeTool("find_generic_versions", { drug_name: drugName });
-        toolResults.push(genericsResult);
-        toolLog.push({ tool: "find_generic_versions", args: { drug_name: drugName } });
+      // Execute all tools in parallel
+      const results = await Promise.all(
+        plan.tools.map(async (toolCall) => {
+          try {
+            const result = await executeTool(toolCall.name, toolCall.args);
+            toolLog.push({ tool: toolCall.name, args: toolCall.args });
+            return result;
+          } catch (err) {
+            console.error(`[MCP] Tool ${toolCall.name} failed:`, err.message);
+            return { tool: toolCall.name, error: err.message };
+          }
+        })
+      );
 
-        // Also get base bula for context
-        const bulaResult = await executeTool("get_bula_data", {
-          drug_name: drugName, mode: mode || "patient",
-        });
-        toolResults.push(bulaResult);
-        toolLog.push({ tool: "get_bula_data", args: { drug_name: drugName } });
-
-      } else if (intent.type === "section" && intent.section) {
-        // ROUTE B: Extract specific section
-        const sectionResult = await executeTool("get_section", {
-          drug_name: drugName, section: intent.section, mode: mode || "patient",
-        });
-        toolResults.push(sectionResult);
-        toolLog.push({ tool: "get_section", args: { drug_name: drugName, section: intent.section } });
-
-        // If section not found, fallback to full bula
-        if (!sectionResult.found) {
-          const bulaResult = await executeTool("get_bula_data", {
-            drug_name: drugName, mode: mode || "patient",
-          });
-          toolResults.push(bulaResult);
-          toolLog.push({ tool: "get_bula_data", args: { drug_name: drugName } });
-        }
-
-      } else {
-        // ROUTE C: General query → local bula first, then ANVISA PDF
-        const bulaResult = await executeTool("get_bula_data", {
-          drug_name: drugName, mode: mode || "patient",
-        });
-        toolResults.push(bulaResult);
-        toolLog.push({ tool: "get_bula_data", args: { drug_name: drugName } });
-
-        // If local data not found, try fetching real bula from ANVISA
-        if (!bulaResult.found) {
-          console.log(`[MCP] Local bula not found for '${drugName}', trying ANVISA PDF...`);
-          const anvisaResult = await executeTool("fetch_anvisa_bula", {
-            drug_name: drugName, mode: mode || "patient",
-          });
-          toolResults.push(anvisaResult);
-          toolLog.push({ tool: "fetch_anvisa_bula", args: { drug_name: drugName } });
-        }
-      }
+      toolResults.push(...results);
     }
 
     // =========================================
-    // Step 5: Build prompt via prompt_manager
-    // =========================================
-    // =========================================
-    // Step 5: Build prompt via prompt_manager (template)
+    // Step 4: Build prompt via prompt_manager
     // =========================================
     const context = buildContextPrompt(toolResults);
 
-    const systemPrompt = getSystemPrompt(mode || "patient", {
+    const systemPrompt = getSystemPrompt(mode, {
       date: new Date().toISOString().split("T")[0],
       question: message,
       documents: context || getNoDataPrompt(),
@@ -206,33 +126,30 @@ module.exports = async function handler(req, res) {
     messages.push({ role: "user", content: message });
 
     // =========================================
-    // Step 6: Call LLM
+    // Step 5: Call LLM for response
     // =========================================
-    const llmRes = await fetch(HF_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: HF_MODEL,
-        messages,
-        max_tokens: 1024,
-        temperature: 0.3,
-      }),
-    });
-
-    if (!llmRes.ok) {
-      const errText = await llmRes.text();
-      console.error("LLM API error:", llmRes.status, errText);
-      return res.status(502).json({ detail: `Erro na API do LLM: ${llmRes.status}` });
+    let llmResult;
+    try {
+      if (runtimeModel) {
+        let modelOptions = {};
+        if (typeof runtimeModel === "string") {
+          modelOptions = { model: runtimeModel };
+        } else if (typeof runtimeModel === "object") {
+          modelOptions = runtimeModel;
+        }
+        llmResult = await chatWithModel(messages, modelOptions);
+      } else {
+        llmResult = await chat(messages, { temperature: 0.3, maxTokens: 1024 });
+      }
+    } catch (llmErr) {
+      console.error("LLM call failed:", llmErr.message);
+      return res.status(502).json({ detail: `Erro na API do LLM: ${llmErr.message}` });
     }
 
-    const llmData = await llmRes.json();
-    const responseText = llmData.choices?.[0]?.message?.content || "Desculpe, não consegui gerar uma resposta.";
+    const responseText = llmResult.text || "Desculpe, não consegui gerar uma resposta.";
 
     // =========================================
-    // Step 7: Build sources
+    // Step 6: Build sources
     // =========================================
     const sources = [];
     const seenNames = new Set();
@@ -264,7 +181,7 @@ module.exports = async function handler(req, res) {
     }
 
     // =========================================
-    // Step 8: Save to session + respond
+    // Step 7: Save to session + respond
     // =========================================
     if (sessions && sessionId) {
       try {
@@ -293,14 +210,14 @@ module.exports = async function handler(req, res) {
       response: responseText,
       sources,
       metadata: {
-        mode: mode || "patient",
-        drugsDetected: drugNames,
-        intent: intent.type,
-        section: intent.section,
+        mode,
+        drugsDetected: plan.drugs || [],
         toolsExecuted: toolLog,
         availableTools: listTools().map(t => t.name),
         documents: context || null,
         evaluateUrl: "/api/evaluate",
+        model: llmResult?.config || null,
+        plan: plan, // Include full plan for debugging
       },
     });
 

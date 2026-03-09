@@ -36,11 +36,6 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ detail: "Campo 'response' é obrigatório." });
   }
 
-  const apiKey = process.env.HF_TOKEN;
-  if (!apiKey) {
-    return res.status(500).json({ detail: "HF_TOKEN não configurado." });
-  }
-
   const context = {
     question: question || "",
     response,
@@ -58,7 +53,7 @@ module.exports = async function handler(req, res) {
 
       for (const judgeName of judges) {
         console.log(`[EVALUATE] Running judge: ${judgeName}`);
-        const result = await runJudge(judgeName, context, apiKey);
+        const result = await runJudge(judgeName, context);
         results.judges[judgeName] = result;
         if (result.score !== undefined && !result.error) {
           scores.push(result.score);
@@ -71,7 +66,7 @@ module.exports = async function handler(req, res) {
         : null;
     } else {
       // Run all judges
-      results = await runAllJudges(context, apiKey);
+      results = await runAllJudges(context);
     }
 
     // =========================================
