@@ -3,12 +3,13 @@
  * 
  * Runs the 4-judge evaluation pipeline on a given response.
  * POST /api/evaluate with:
- *   { question, response, documents, mode, judges? }
+ *   { question, response, documents, mode, judges?, sessionId? }
  * 
- * Returns aggregated scores from all judges or specific ones.
+ * Returns aggregated scores from all judges and saves to MongoDB.
  */
 
 const { runAllJudges, runJudge, listJudges } = require("../lib/judges");
+const { getEvaluationsCollection } = require("../lib/db");
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -29,7 +30,7 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ detail: "Método não permitido." });
   }
 
-  const { question, response, documents, mode, judges } = req.body || {};
+  const { question, response, documents, mode, judges, sessionId } = req.body || {};
 
   if (!response) {
     return res.status(400).json({ detail: "Campo 'response' é obrigatório." });
@@ -71,6 +72,34 @@ module.exports = async function handler(req, res) {
     } else {
       // Run all judges
       results = await runAllJudges(context, apiKey);
+    }
+
+    // =========================================
+    // Save evaluation results to MongoDB
+    // =========================================
+    try {
+      const evaluations = await getEvaluationsCollection();
+      if (evaluations) {
+        await evaluations.insertOne({
+          sessionId: sessionId || null,
+          question: question || "",
+          response,
+          mode: mode || "patient",
+          documents: documents ? documents.substring(0, 2000) : null, // Truncate to save space
+          results: results.judges,
+          aggregate_score: results.aggregate_score,
+          judges_run: results.judges_run,
+          timestamp: new Date(),
+        });
+        console.log("[EVALUATE] Results saved to MongoDB.");
+        results.saved = true;
+      } else {
+        console.warn("[EVALUATE] MongoDB not available, results not saved.");
+        results.saved = false;
+      }
+    } catch (dbErr) {
+      console.warn("[EVALUATE] MongoDB save failed:", dbErr.message);
+      results.saved = false;
     }
 
     return res.status(200).json(results);
