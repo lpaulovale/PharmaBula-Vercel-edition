@@ -481,7 +481,7 @@
         .judge-row-header { display: flex; align-items: center; justify-content: space-between; cursor: pointer; padding: 2px 0; user-select: none; }
         .judge-row-header:hover { opacity: 0.75; }
         .judge-row-left { display: flex; align-items: center; gap: 4px; }
-        .judge-row-chevron { font-size: 14px; color: var(--text3); transition: transform 0.2s; }
+        .judge-row-chevron { color: var(--text3); transition: transform 0.2s; }
         .judge-row-header.open .judge-row-chevron { transform: rotate(90deg); }
         .judge-name { color: var(--text2); font-size: 12.5px; }
         .judge-score-badge { font-weight: 600; padding: 2px 8px; border-radius: var(--r-pill); font-size: 11px; }
@@ -818,7 +818,7 @@
                                 criteriaHtml+='</div>';
                             }
                             const has=criteriaHtml!=='';
-                            const chevron=has?'<span class="judge-row-chevron material-icons-round" style="font-size:14px;">chevron_right</span>':'';
+                            const chevron=has?'<span class="judge-row-chevron ico ico-sm"><i data-lucide="chevron-right"></i></span>':'';
                             const click=has?` onclick="this.classList.toggle('open');document.getElementById('${rowId}-criteria').classList.toggle('open')"`:''
                             rows+=`<div class="judge-row"><div class="judge-row-header"${click}><span class="judge-row-left">${chevron}<span class="judge-name">${label}</span></span><span><span class="judge-score-badge ${cls}">${sc}/100</span><span class="judge-classification">${j.classification||''}</span></span></div>${criteriaHtml}</div>`;
                         }
