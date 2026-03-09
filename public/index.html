@@ -1271,7 +1271,10 @@
                             for (const [key, label] of Object.entries(judgeNames)) {
                                 const j = evalData.judges?.[key];
                                 if (!j || j.error) {
-                                    rows += '<div class="judge-row"><span class="judge-name">' + label + '</span><span class="judge-score-badge low">erro</span></div>';
+                                    const isRateLimit = j?.rate_limited;
+                                    const errLabel = isRateLimit ? '⏳ limite' : 'erro';
+                                    const errClass = isRateLimit ? 'mid' : 'low';
+                                    rows += '<div class="judge-row"><span class="judge-name">' + label + '</span><span class="judge-score-badge ' + errClass + '">' + errLabel + '</span></div>';
                                     continue;
                                 }
                                 const sc = j.score || 0;
