@@ -825,13 +825,30 @@
         }
         .judge-details.open { display: block; }
         .judge-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
             padding: 6px 0;
             border-bottom: 1px solid rgba(128,128,128,0.1);
         }
         .judge-row:last-child { border-bottom: none; }
+        .judge-row-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            padding: 2px 0;
+            user-select: none;
+        }
+        .judge-row-header:hover { opacity: 0.8; }
+        .judge-row-left {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .judge-row-chevron {
+            font-size: 14px;
+            color: var(--text-tertiary);
+            transition: transform 0.2s;
+        }
+        .judge-row-header.open .judge-row-chevron { transform: rotate(90deg); }
         .judge-name { color: var(--text-secondary); font-size: 12px; }
         .judge-score-badge {
             font-weight: 600;
@@ -847,6 +864,65 @@
             color: var(--text-tertiary);
             margin-left: 6px;
         }
+        .judge-criteria-list {
+            display: none;
+            padding: 6px 0 4px 18px;
+        }
+        .judge-criteria-list.open { display: block; }
+        .judge-criterion {
+            display: flex;
+            flex-direction: column;
+            gap: 1px;
+            padding: 4px 0;
+            border-bottom: 1px dashed rgba(128,128,128,0.08);
+        }
+        .judge-criterion:last-child { border-bottom: none; }
+        .judge-criterion-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .judge-criterion-name {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            font-family: 'Roboto Mono', monospace;
+        }
+        .judge-criterion-score {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+        .judge-criterion-justification {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-style: italic;
+            line-height: 1.4;
+            padding: 2px 0;
+        }
+        .judge-claims-list {
+            display: none;
+            padding: 6px 0 4px 18px;
+        }
+        .judge-claims-list.open { display: block; }
+        .judge-claim {
+            padding: 4px 0;
+            border-bottom: 1px dashed rgba(128,128,128,0.08);
+            font-size: 11px;
+        }
+        .judge-claim:last-child { border-bottom: none; }
+        .judge-claim-text { color: var(--text-secondary); font-style: italic; }
+        .judge-claim-badge {
+            display: inline-block;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 600;
+            margin-left: 4px;
+        }
+        .judge-claim-badge.exact { background: rgba(16,185,129,0.12); color: #10b981; }
+        .judge-claim-badge.paraphrased { background: rgba(59,130,246,0.12); color: #3b82f6; }
+        .judge-claim-badge.inferred { background: rgba(234,179,8,0.12); color: #eab308; }
+        .judge-claim-badge.unsupported { background: rgba(239,68,68,0.12); color: #ef4444; }
         .judge-loading {
             padding: 10px 12px;
             color: var(--text-tertiary);
@@ -1274,16 +1350,60 @@
                                     const isRateLimit = j?.rate_limited;
                                     const errLabel = isRateLimit ? '⏳ limite' : 'erro';
                                     const errClass = isRateLimit ? 'mid' : 'low';
-                                    rows += '<div class="judge-row"><span class="judge-name">' + label + '</span><span class="judge-score-badge ' + errClass + '">' + errLabel + '</span></div>';
+                                    rows += '<div class="judge-row"><div class="judge-row-header"><span class="judge-name">' + label + '</span><span class="judge-score-badge ' + errClass + '">' + errLabel + '</span></div></div>';
                                     continue;
                                 }
                                 const sc = j.score || 0;
                                 const cls = sc >= 80 ? 'high' : sc >= 60 ? 'mid' : 'low';
                                 const classif = j.classification || '';
+                                const rowId = panelId + '-' + key;
+
+                                // Build criteria detail sub-rows
+                                let criteriaHtml = '';
+                                if (key === 'source_judge' && j.claims && j.claims.length > 0) {
+                                    // Source judge: show claims list
+                                    criteriaHtml = '<div class="judge-claims-list" id="' + rowId + '-criteria">';
+                                    for (const claim of j.claims) {
+                                        const badgeCls = (claim.classification || '').toLowerCase();
+                                        const risk = claim.risk_level && claim.risk_level !== 'null' ? ' (' + claim.risk_level + ')' : '';
+                                        criteriaHtml += '<div class="judge-claim">' +
+                                            '<span class="judge-claim-text">"' + escapeHtml(claim.text || '') + '"</span> ' +
+                                            '<span class="judge-claim-badge ' + badgeCls + '">' + (claim.classification || '') + risk + '</span>' +
+                                            '</div>';
+                                    }
+                                    criteriaHtml += '</div>';
+                                } else if (j.criteria_scores) {
+                                    // Safety, Quality, Format: show criteria + justifications
+                                    criteriaHtml = '<div class="judge-criteria-list" id="' + rowId + '-criteria">';
+                                    for (const [crit, critScore] of Object.entries(j.criteria_scores)) {
+                                        const justification = j.justificativas?.[crit] || '';
+                                        const critCls = critScore >= 8 ? 'high' : critScore >= 6 ? 'mid' : 'low';
+                                        criteriaHtml += '<div class="judge-criterion">' +
+                                            '<div class="judge-criterion-header">' +
+                                            '<span class="judge-criterion-name">' + crit + '</span>' +
+                                            '<span class="judge-criterion-score judge-score-badge ' + critCls + '">' + critScore + '/10</span>' +
+                                            '</div>';
+                                        if (justification) {
+                                            criteriaHtml += '<div class="judge-criterion-justification">' + escapeHtml(justification) + '</div>';
+                                        }
+                                        criteriaHtml += '</div>';
+                                    }
+                                    criteriaHtml += '</div>';
+                                }
+
+                                const hasCriteria = criteriaHtml !== '';
+                                const chevron = hasCriteria ? '<span class="material-icons-round judge-row-chevron">chevron_right</span>' : '';
+                                const toggleClick = hasCriteria
+                                    ? ' onclick="this.classList.toggle(\'open\');document.getElementById(\'' + rowId + '-criteria\').classList.toggle(\'open\')"'
+                                    : '';
+
                                 rows += '<div class="judge-row">' +
-                                    '<span class="judge-name">' + label + '</span>' +
+                                    '<div class="judge-row-header"' + toggleClick + '>' +
+                                    '<span class="judge-row-left">' + chevron + '<span class="judge-name">' + label + '</span></span>' +
                                     '<span><span class="judge-score-badge ' + cls + '">' + sc + '/100</span>' +
                                     '<span class="judge-classification">' + classif + '</span></span>' +
+                                    '</div>' +
+                                    criteriaHtml +
                                     '</div>';
                             }
 
