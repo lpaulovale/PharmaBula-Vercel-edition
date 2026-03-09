@@ -785,6 +785,84 @@
         /* KaTeX overrides for theme */
         .message-content .katex { color: var(--text-primary); }
         .message-content .katex-display { margin: 12px 0; overflow-x: auto; }
+
+        /* Judge Evaluation Panel */
+        .judge-panel {
+            margin-top: 10px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            font-size: 13px;
+            animation: fadeIn 0.3s ease;
+        }
+        .judge-toggle {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: var(--surface-container);
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.2s;
+        }
+        .judge-toggle:hover { background: var(--bg-tertiary); }
+        .judge-toggle .material-icons-round { font-size: 18px; transition: transform 0.2s; }
+        .judge-toggle.open .material-icons-round { transform: rotate(90deg); }
+        .judge-toggle-label { font-weight: 500; color: var(--text-secondary); flex: 1; }
+        .judge-aggregate {
+            font-weight: 700;
+            padding: 2px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+        }
+        .judge-aggregate.high { background: rgba(16,185,129,0.15); color: #10b981; }
+        .judge-aggregate.mid { background: rgba(234,179,8,0.15); color: #eab308; }
+        .judge-aggregate.low { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .judge-details {
+            display: none;
+            padding: 10px 12px;
+            border-top: 1px solid var(--border);
+        }
+        .judge-details.open { display: block; }
+        .judge-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid rgba(128,128,128,0.1);
+        }
+        .judge-row:last-child { border-bottom: none; }
+        .judge-name { color: var(--text-secondary); font-size: 12px; }
+        .judge-score-badge {
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-size: 11px;
+        }
+        .judge-score-badge.high { background: rgba(16,185,129,0.12); color: #10b981; }
+        .judge-score-badge.mid { background: rgba(234,179,8,0.12); color: #eab308; }
+        .judge-score-badge.low { background: rgba(239,68,68,0.12); color: #ef4444; }
+        .judge-classification {
+            font-size: 11px;
+            color: var(--text-tertiary);
+            margin-left: 6px;
+        }
+        .judge-loading {
+            padding: 10px 12px;
+            color: var(--text-tertiary);
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .judge-loading .spinner {
+            width: 14px; height: 14px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent-green);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 
@@ -1144,6 +1222,79 @@
                                 { left: '\\[', right: '\\]', display: true },
                             ],
                             throwOnError: false,
+                        });
+                    }
+                }
+
+                // =========================================
+                // Judge Evaluation (async, non-blocking)
+                // =========================================
+                const lastMsgEl = messagesContainer.lastElementChild;
+                if (lastMsgEl) {
+                    const msgContent = lastMsgEl.querySelector('.message-content');
+                    if (msgContent) {
+                        // Add loading panel
+                        const panelId = 'judge-' + Date.now();
+                        const judgeHtml = '<div class="judge-panel" id="' + panelId + '">' +
+                            '<div class="judge-loading"><div class="spinner"></div>Avaliando resposta com 4 juízes MCP...</div>' +
+                            '</div>';
+                        msgContent.insertAdjacentHTML('beforeend', judgeHtml);
+
+                        // Fire evaluate call
+                        fetch(API_URL.replace('/chat', '/evaluate'), {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                question: message,
+                                response: responseText,
+                                documents: data.metadata?.documents || '',
+                                mode: currentMode,
+                                sessionId: sessionId,
+                            }),
+                        })
+                        .then(r => r.json())
+                        .then(evalData => {
+                            const panel = document.getElementById(panelId);
+                            if (!panel) return;
+
+                            const agg = evalData.aggregate_score;
+                            const aggClass = agg >= 80 ? 'high' : agg >= 60 ? 'mid' : 'low';
+
+                            const judgeNames = {
+                                safety_judge: '🛡️ Segurança',
+                                quality_judge: '⭐ Qualidade',
+                                source_judge: '📎 Fontes',
+                                format_judge: '📐 Formato',
+                            };
+
+                            let rows = '';
+                            for (const [key, label] of Object.entries(judgeNames)) {
+                                const j = evalData.judges?.[key];
+                                if (!j || j.error) {
+                                    rows += '<div class="judge-row"><span class="judge-name">' + label + '</span><span class="judge-score-badge low">erro</span></div>';
+                                    continue;
+                                }
+                                const sc = j.score || 0;
+                                const cls = sc >= 80 ? 'high' : sc >= 60 ? 'mid' : 'low';
+                                const classif = j.classification || '';
+                                rows += '<div class="judge-row">' +
+                                    '<span class="judge-name">' + label + '</span>' +
+                                    '<span><span class="judge-score-badge ' + cls + '">' + sc + '/100</span>' +
+                                    '<span class="judge-classification">' + classif + '</span></span>' +
+                                    '</div>';
+                            }
+
+                            panel.innerHTML = '<div class="judge-toggle" onclick="this.classList.toggle(\'open\');this.nextElementSibling.classList.toggle(\'open\')">' +
+                                '<span class="material-icons-round">chevron_right</span>' +
+                                '<span class="judge-toggle-label">Avaliação MCP</span>' +
+                                '<span class="judge-aggregate ' + aggClass + '">' + (agg !== null ? agg + '/100' : '—') + '</span>' +
+                                '</div>' +
+                                '<div class="judge-details">' + rows + '</div>';
+                        })
+                        .catch(err => {
+                            const panel = document.getElementById(panelId);
+                            if (panel) panel.remove();
+                            console.warn('Judge evaluation failed:', err);
                         });
                     }
                 }
