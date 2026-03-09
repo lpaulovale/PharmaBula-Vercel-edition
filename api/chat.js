@@ -183,14 +183,16 @@ module.exports = async function handler(req, res) {
     // =========================================
     // Step 5: Build prompt via prompt_manager
     // =========================================
-    let systemPrompt = getSystemPrompt(mode || "patient");
+    // =========================================
+    // Step 5: Build prompt via prompt_manager (template)
+    // =========================================
     const context = buildContextPrompt(toolResults);
 
-    if (context) {
-      systemPrompt += `\n\nCONTEXTO DAS BULAS (dados oficiais):\n${context}`;
-    } else {
-      systemPrompt += getNoDataPrompt();
-    }
+    const systemPrompt = getSystemPrompt(mode || "patient", {
+      date: new Date().toISOString().split("T")[0],
+      question: message,
+      documents: context || getNoDataPrompt(),
+    });
 
     const messages = [{ role: "system", content: systemPrompt }];
 
@@ -297,6 +299,8 @@ module.exports = async function handler(req, res) {
         section: intent.section,
         toolsExecuted: toolLog,
         availableTools: listTools().map(t => t.name),
+        documents: context || null,
+        evaluateUrl: "/api/evaluate",
       },
     });
 
