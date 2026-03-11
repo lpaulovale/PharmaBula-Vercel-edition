@@ -86,6 +86,8 @@ module.exports = async function handler(req, res) {
       results = await runAllJudges(context);
       // Frontend expects "judges" key, not "general_judges"
       results.judges = results.general_judges || {};
+      // Frontend expects "aggregate_score", not "general_score"
+      results.aggregate_score = results.general_score;
     }
 
     // =========================================

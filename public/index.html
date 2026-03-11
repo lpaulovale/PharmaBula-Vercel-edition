@@ -797,6 +797,9 @@
                     msgText.insertAdjacentHTML('beforeend', `<div class="judge-panel" id="${panelId}"><div class="judge-loading"><div class="spinner"></div>Avaliando com 4 juízes MCP…</div></div>`);
                     fetch(API_BASE+'/evaluate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({question:message, response:responseText, documents:data.metadata?.documents||'', mode:currentMode, sessionId}) })
                     .then(r=>r.json()).then(evalData => {
+                        console.log('[JUDGE DEBUG] evalData:', evalData);
+                        console.log('[JUDGE DEBUG] judges:', evalData.judges);
+                        console.log('[JUDGE DEBUG] aggregate_score:', evalData.aggregate_score);
                         const panel = document.getElementById(panelId); if (!panel) return;
                         const agg = evalData.aggregate_score;
                         const aggCls = agg>=80?'high':agg>=60?'mid':'low';
@@ -804,6 +807,7 @@
                         let rows='';
                         for (const [key,label] of Object.entries(names)) {
                             const j=evalData.judges?.[key];
+                            console.log('[JUDGE DEBUG] judge', key, ':', j);
                             if (!j||j.error) { const rl=j?.rate_limited; rows+=`<div class="judge-row"><div class="judge-row-header"><span class="judge-name">${label}</span><span class="judge-score-badge ${rl?'mid':'low'}">${rl?'⏳ limite':'erro'}</span></div></div>`; continue; }
                             const sc=j.score||0; const cls=sc>=80?'high':sc>=60?'mid':'low';
                             const rowId=panelId+'-'+key;
