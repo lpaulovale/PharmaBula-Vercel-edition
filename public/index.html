@@ -800,11 +800,14 @@
                         console.log('[JUDGE DEBUG] evalData:', evalData);
                         console.log('[JUDGE DEBUG] judges:', evalData.judges);
                         console.log('[JUDGE DEBUG] aggregate_score:', evalData.aggregate_score);
+                        console.log('[JUDGE DEBUG] topic_judges:', evalData.topic_judges);
                         const panel = document.getElementById(panelId); if (!panel) return;
                         const agg = evalData.aggregate_score;
                         const aggCls = agg>=80?'high':agg>=60?'mid':'low';
                         const names = {safety_judge:'🛡️ Segurança',quality_judge:'⭐ Qualidade',source_judge:'📎 Fontes',format_judge:'📐 Formato'};
+                        const topicNames = {posologia:'💊 Posologia',contraindicacoes:'⚠️ Contraindicações',reacoes_adversas:'🔬 Reações Adversas'};
                         let rows='';
+                        // General judges
                         for (const [key,label] of Object.entries(names)) {
                             const j=evalData.judges?.[key];
                             console.log('[JUDGE DEBUG] judge', key, ':', j);
@@ -825,6 +828,37 @@
                             const chevron=has?'<span class="judge-row-chevron ico ico-sm"><i data-lucide="chevron-right"></i></span>':'';
                             const click=has?` onclick="this.classList.toggle('open');document.getElementById('${rowId}-criteria').classList.toggle('open')"`:''
                             rows+=`<div class="judge-row"><div class="judge-row-header"${click}><span class="judge-row-left">${chevron}<span class="judge-name">${label}</span></span><span><span class="judge-score-badge ${cls}">${sc}/100</span><span class="judge-classification">${j.classification||''}</span></span></div>${criteriaHtml}</div>`;
+                        }
+                        // Topic judges
+                        const topics = evalData.topics_detected || [];
+                        console.log('[JUDGE DEBUG] topics_detected:', topics);
+                        console.log('[JUDGE DEBUG] topic_judges:', evalData.topic_judges);
+                        for (const topic of topics) {
+                            const tj = evalData.topic_judges?.[topic];
+                            console.log('[JUDGE DEBUG] topic judge', topic, ':', tj);
+                            if (!tj || tj.error) { console.log('[JUDGE DEBUG] skipping', topic, 'error:', tj?.error); continue; }
+                            const label = topicNames[topic] || topic;
+                            const sc = tj.coverage_score || 0;
+                            const cls = sc>=80?'high':sc>=60?'mid':'low';
+                            const rowId = panelId+'-topic-'+topic;
+                            let criteriaHtml = '';
+                            if (tj.questions_answered?.length || tj.questions_missing?.length) {
+                                criteriaHtml = `<div class="judge-criteria-list" id="${rowId}-criteria">`;
+                                if (tj.questions_answered?.length) {
+                                    criteriaHtml += `<div class="judge-criterion"><span class="judge-criterion-name">✅ Respondidas:</span><span class="judge-criterion-justification">${tj.questions_answered.join(', ')}</span></div>`;
+                                }
+                                if (tj.questions_missing?.length) {
+                                    criteriaHtml += `<div class="judge-criterion"><span class="judge-criterion-name">❌ Faltantes:</span><span class="judge-criterion-justification">${tj.questions_missing.join(', ')}</span></div>`;
+                                }
+                                if (tj.errors?.length) {
+                                    criteriaHtml += `<div class="judge-criterion"><span class="judge-criterion-name">⚠️ Erros:</span><span class="judge-criterion-justification">${tj.errors.join('; ')}</span></div>`;
+                                }
+                                criteriaHtml += '</div>';
+                            }
+                            const has = criteriaHtml !== '';
+                            const chevron = has ? '<span class="judge-row-chevron ico ico-sm"><i data-lucide="chevron-right"></i></span>' : '';
+                            const click = has ? ` onclick="this.classList.toggle('open');document.getElementById('${rowId}-criteria').classList.toggle('open')"` : '';
+                            rows += `<div class="judge-row"><div class="judge-row-header"${click}><span class="judge-row-left">${chevron}<span class="judge-name">${label}</span></span><span><span class="judge-score-badge ${cls}">${sc}/100</span><span class="judge-classification">${tj.classification||''}</span></span></div>${criteriaHtml}</div>`;
                         }
                         panel.innerHTML=`<div class="judge-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')"><i data-lucide="chevron-right"></i><span class="judge-toggle-label">Avaliação MCP</span><span class="judge-aggregate ${aggCls}">${agg!==null?agg+'/100':'—'}</span></div><div class="judge-details">${rows}</div>`;
                         lucide.createIcons();
