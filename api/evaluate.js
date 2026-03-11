@@ -134,6 +134,15 @@ module.exports = async function handler(req, res) {
       results.saved = false;
     }
 
+    // Debug: log response structure
+    console.log("[EVALUATE] Returning:", JSON.stringify({
+      hasJudges: !!results.judges,
+      judgesKeys: results.judges ? Object.keys(results.judges) : [],
+      hasGeneralJudges: !!results.general_judges,
+      aggregateScore: results.aggregate_score,
+      generalScore: results.general_score,
+    }, null, 2));
+
     return res.status(200).json(results);
   } catch (err) {
     console.error("Evaluation error:", err);
