@@ -84,6 +84,8 @@ module.exports = async function handler(req, res) {
     } else {
       // Run all judges
       results = await runAllJudges(context);
+      // Frontend expects "judges" key, not "general_judges"
+      results.judges = results.general_judges || {};
     }
 
     // =========================================
