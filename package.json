@@ -1,7 +1,7 @@
 {
-    "name": "pharmabula-vercel",
+    "name": "bula-ia",
     "version": "1.0.0",
-    "description": "PharmaBula - Assistente inteligente de medicamentos (Vercel Edition)",
+    "description": "BulaIA - Assistente inteligente de medicamentos (Vercel Edition)",
     "private": true,
     "scripts": {
         "dev": "vercel dev",

@@ -1,0 +1,1284 @@
+\documentclass[12pt]{article}
+\usepackage{svg}
+\usepackage[utf8]{inputenc}
+\usepackage{sbc-template}
+\usepackage{graphicx,url}
+\usepackage[brazil]{babel}
+\usepackage{booktabs}
+\usepackage{placeins}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+\usepackage{amsmath}
+\usepackage{framed}
+\usepackage{tabularx}
+\usepackage{float}
+\usepackage{comment}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstdefinestyle{jsonStyle}{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  rulecolor=\color{gray!60},
+  backgroundcolor=\color{gray!8},
+  captionpos=b,
+  aboveskip=6pt,
+  belowskip=6pt
+}
+\lstset{style=jsonStyle}
+
+\sloppy
+
+\title{BulaIa: Aplicação do Model Context Protocol para Consulta Inteligente de Bulas de Medicamentos no Contexto Regulatório Brasileiro}
+
+\author{Paulo Eduardo Borges do Vale\inst{1}, Pedro Santos Neto\inst{1}}
+
+\address{
+  Departamento de Computação – Universidade Federal do Piauí (UFPI)\\
+  Teresina – PI – Brasil
+  \email{\{paulo@ufpi.edu.br, pasn@ufpi.edu.br\}}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Access to accurate pharmaceutical information represents a fundamental challenge for healthcare professionals and patients, especially in contexts where drug package inserts require interpretation of complex technical language. This work presents BulaIa, an intelligent assistant that leverages the Model Context Protocol (MCP) to provide contextualized answers about medications through direct integration with the Brazilian National Health Surveillance Agency (ANVISA) database. The system architecture connects large language models to the ANVISA API via a standardized MCP server, enabling real-time data access without embedding-based retrieval. The system implements two distinct interaction modes: a patient mode with simplified answers, and a professional mode with detailed technical information. A multi-agent validation pipeline with four specialized judges evaluates each response before delivery. The MCP-based integration demonstrates how standardized communication protocols can reduce integration fragmentation while ensuring data freshness and complete traceability, offering a viable approach for democratizing access to pharmaceutical information in Brazil.
+\end{abstract}
+
+\begin{resumo}
+O acesso a informações farmacêuticas precisas representa um desafio fundamental para profissionais de saúde e pacientes, especialmente onde bulas de medicamentos requerem interpretação de linguagem técnica complexa. Este trabalho apresenta o BulaIa, um assistente inteligente que utiliza o Model Context Protocol (MCP) para fornecer respostas contextualizadas sobre medicamentos por meio de integração direta com a base de dados da Agência Nacional de Vigilância Sanitária (ANVISA). A arquitetura do sistema conecta modelos de linguagem de grande escala à API da ANVISA via servidor MCP padronizado, permitindo acesso a dados em tempo real sem recuperação baseada em embeddings. O sistema implementa dois modos de interação distintos: modo paciente, com respostas simplificadas, e modo profissional, com informações técnicas detalhadas. Um pipeline de validação multi-agente com quatro juízes especializados avalia cada resposta antes de sua entrega. A integração baseada no protocolo MCP demonstra como protocolos de comunicação padronizados podem reduzir a fragmentação de integrações e garantir atualização de dados e rastreabilidade completa, oferecendo uma abordagem viável para democratizar o acesso a informações farmacêuticas no Brasil.
+\end{resumo}
+
+\section{Introdução}
+
+A crescente complexidade das informações farmacêuticas e a dificuldade de acesso a dados confiáveis sobre medicamentos representam desafios significativos tanto para profissionais de saúde quanto para pacientes. As bulas de medicamentos, documentos oficiais regulamentados pela Agência Nacional de Vigilância Sanitária (ANVISA), contêm informações essenciais sobre composição, indicações, contraindicações, posologia e efeitos adversos. Contudo, a linguagem técnica utilizada nesses documentos frequentemente dificulta a compreensão por parte de pacientes e até mesmo de profissionais não especializados, evidenciando a necessidade de sistemas que traduzam essa complexidade em informações acessíveis.
+
+Nesse contexto, o Model Context Protocol (MCP), desenvolvido pela Anthropic e lançado em novembro de 2024~\cite{anthropic2024mcp}, emerge como um padrão aberto que define como aplicações de IA se conectam a sistemas externos por meio de uma interface de comunicação padronizada. O MCP é frequentemente descrito como um ``USB-C para aplicações de IA''~\cite{ibm2025mcp}: assim como o conector físico elimina a necessidade de cabos proprietários para cada dispositivo, o protocolo elimina a necessidade de integrações customizadas para cada combinação de modelo e fonte de dados. É fundamental distinguir o papel do MCP: trata-se de um \emph{protocolo de comunicação}, que opera na camada de integração entre o modelo de linguagem e sistemas externos. O MCP não prescreve como o conhecimento é recuperado ou armazenado --- RAG, bancos vetoriais e chamadas diretas a APIs podem todos ser implementados \emph{dentro} de um servidor MCP, que os expõe ao modelo por meio de sua interface padronizada~\cite{databricks2025mcp}.
+
+\subsection{Problemática e Motivação}
+
+A implementação de sistemas de informação farmacêutica enfrenta desafios em duas camadas distintas. Na camada de \emph{recuperação de conhecimento}, abordagens baseadas em RAG~\cite{gao2023rag} requerem indexação prévia de documentos, o que pode resultar em dados desatualizados até a próxima reindexação, enquanto modelos de linguagem \emph{standalone}~\cite{brown2020gpt3} dependem de conhecimento paramétrico limitado pela data de treinamento e são suscetíveis a alucinações em domínios críticos como a saúde~\cite{thirunavukarasu2023llm}. Na camada de \emph{integração com fontes externas}, APIs REST tradicionais e mecanismos proprietários de function calling carecem de padronização e requerem implementação customizada para cada fonte de dados, gerando o problema de multiplicidade $N \times M$: cada uma das $N$ aplicações precisa de um conector distinto para cada uma das $M$ fontes de dados~\cite{wikipedia2025mcp}.
+
+O protocolo MCP endereça diretamente esse segundo problema: ao estabelecer uma interface única de comunicação, permite que um servidor MCP desenvolvido para uma fonte de dados seja reutilizado por qualquer cliente compatível, reduzindo o problema $N \times M$ a $N + M$ implementações~\cite{hou2025mcp}. A escolha de estratégia de recuperação --- RAG, acesso direto a API, ou outra --- é uma decisão arquitetural independente do protocolo, tomada no nível do servidor MCP. No contexto do BulaIa, a disponibilidade de uma API estruturada e atualizada da ANVISA torna desnecessária a indexação prévia por embeddings, permitindo acesso direto em tempo real.
+
+\subsection{Objetivo e Contribuições}
+
+Este trabalho propõe o BulaIa, um assistente inteligente para consulta de bulas de medicamentos que emprega o protocolo MCP para acesso direto e em tempo real aos dados da ANVISA. As contribuições específicas incluem: (i) o desenvolvimento de servidor MCP customizado para integração com a API oficial da ANVISA; (ii) a implementação de dois modos de resposta diferenciados por perfil de usuário via prompts MCP especializados; (iii) um pipeline de validação com quatro juízes especializados que avalia cada resposta antes de sua entrega; e (iv) a demonstração de rastreabilidade completa com fundamentação em fontes oficiais.
+
+\subsection{Organização do Documento}
+
+A Seção~\ref{sec:relacionados} apresenta trabalhos relacionados em sistemas de informação farmacêutica e protocolos de integração para LLMs. A Seção~\ref{sec:fundamentos} detalha os fundamentos do MCP como protocolo de comunicação, incluindo sua estrutura em camadas, primitivas e fluxo de mensagens. A Seção~\ref{sec:anvisa} descreve a API da ANVISA e suas capacidades. A Seção~\ref{sec:metodologia} apresenta a arquitetura do sistema proposto. A Seção~\ref{sec:implementacao} detalha aspectos técnicos relevantes. A Seção~\ref{sec:discussao} analisa benefícios, limitações e implicações. A Seção~\ref{sec:conclusao} consolida as contribuições e aponta direções futuras.
+
+Para fundamentar as escolhas de projeto, as Tabelas~\ref{tab:camada-recuperacao} e~\ref{tab:camada-integracao} contrastam as duas dimensões de comparação que motivam a adoção do BulaIa. A Tabela~\ref{tab:camada-recuperacao} contrasta abordagens na camada de recuperação de conhecimento. A Tabela~\ref{tab:camada-integracao} contrasta opções na camada de integração com fontes externas, onde o protocolo MCP atua. Essa separação é fundamental: o MCP não substitui RAG, mas resolve um problema diferente --- e pode, inclusive, encapsulá-lo.
+
+\begin{table}[htbp]
+\centering
+\caption{Camada de Recuperação de Conhecimento: RAG vs. Conhecimento Paramétrico}
+\label{tab:camada-recuperacao}
+\begin{tabularx}{\textwidth}{| l | >{\raggedright\arraybackslash}X | >{\raggedright\arraybackslash}X |}
+\hline
+\textbf{Dimensão} & \textbf{RAG (Retrieval-Augmented)} & \textbf{Conhecimento Paramétrico} \\
+\hline
+Fonte de conhecimento & Documentos indexados em base vetorial & Pesos do modelo (data de treinamento) \\
+\hline
+Atualização & Requer reindexação periódica & Limitado à data de corte do treinamento \\
+\hline
+Infraestrutura adicional & Embeddings, banco vetorial, pipeline de ingestão & Nenhuma \\
+\hline
+Rastreabilidade & Parcial (citação de trechos recuperados) & Inexistente (conhecimento implícito) \\
+\hline
+Latência adicional & Overhead de busca vetorial & Nenhuma \\
+\hline
+\end{tabularx}
+\end{table}
+
+Como observado na Tabela~\ref{tab:camada-recuperacao}, nenhuma das abordagens de recuperação de conhecimento garante simultaneamente atualidade dos dados, rastreabilidade completa e ausência de infraestrutura adicional. Ambas podem ser implementadas dentro de um servidor MCP: o protocolo é agnóstico à estratégia de recuperação adotada internamente.
+
+\begin{table}[htbp]
+\centering
+\caption{Camada de Integração com Fontes Externas: MCP vs. Alternativas}
+\label{tab:camada-integracao}
+\begin{tabularx}{\textwidth}{| l | >{\raggedright\arraybackslash}X | >{\raggedright\arraybackslash}X | >{\raggedright\arraybackslash}X |}
+\hline
+\textbf{Dimensão} & \textbf{MCP} & \textbf{Function Calling Ad-hoc} & \textbf{APIs REST Customizadas} \\
+\hline
+Padronização & Protocolo aberto e universal & Proprietário por provedor (OpenAI, Google) & Sem padrão; cada API é única \\
+\hline
+Descoberta de capacidades & Automática (primitivas do protocolo) & Definida pelo desenvolvedor & Manual \\
+\hline
+Reutilização & Servidor MCP reutilizável por qualquer cliente & Acoplado ao provedor de LLM & Acoplado à aplicação \\
+\hline
+Acesso em tempo real & Sim, consulta direta à fonte & Sim, via funções externas & Sim, via chamadas HTTP \\
+\hline
+Escalabilidade $N \times M$ & Resolvida pelo protocolo padrão & Requer $N \times M$ implementações & Requer $N \times M$ conectores \\
+\hline
+Complexidade de setup & Maior: servidor dedicado, JSON-RPC, múltiplos transportes & Moderada: definição de schemas por provedor & Menor: chamadas HTTP diretas \\
+\hline
+\end{tabularx}
+\end{table}
+
+A Tabela~\ref{tab:camada-integracao} revela que o protocolo MCP não é a opção de menor complexidade de implementação --- ao contrário, envolve a manutenção de um processo servidor dedicado, negociação de capacidades e comunicação via JSON-RPC~\cite{marktechpost2025mcp}. Sua vantagem decisiva está na padronização aberta e na reutilização entre clientes: o esforço adicional de implementação é compensado pela capacidade de que qualquer cliente compatível com MCP passe a ter acesso à integração sem custo adicional.
+
+\FloatBarrier
+
+\section{Trabalhos Relacionados}
+\label{sec:relacionados}
+
+Esta seção analisa trabalhos relacionados em sistemas de informação farmacêutica e protocolos de integração para LLMs, identificando lacunas que motivam a proposta do BulaIa. A análise se organiza em duas frentes complementares: sistemas que lidam diretamente com informações sobre medicamentos, e mecanismos de integração entre LLMs e fontes externas.
+
+\subsection{Sistemas de Informação Farmacêutica}
+
+O panorama atual de sistemas digitais para acesso a informações sobre medicamentos revela limitações significativas. O Bulário Eletrônico da ANVISA~\cite{anvisa2024} disponibiliza bulas em formato PDF, mas carece de busca inteligente ou interação conversacional. Aplicativos comerciais como o Consulta Remédios oferecem interface simplificada, porém sem processamento contextual das informações recuperadas.
+
+No âmbito acadêmico, trabalhos recentes exploraram LLMs como provedores de informação farmacêutica. \citeauthor{li2024drug}~\cite{li2024drug} avaliaram LLMs respondendo perguntas sobre bulas de medicamentos, identificando limitações no reconhecimento de nomes e tendência a alucinações em domínios regulatórios. \citeauthor{ong2024cdss}~\cite{ong2024cdss} demonstraram a viabilidade de LLMs como sistemas de suporte a decisão clínica para segurança de medicamentos. No Brasil, iniciativas de integração de LLMs com o padrão nacional de prescrição eletrônica e o sistema e-SUS têm explorado modelos como GPT-4 e Llama para geração de instruções de uso acessíveis a pacientes, evidenciando demanda local por soluções que considerem particularidades regulatórias brasileiras. Esses trabalhos, contudo, não abordam integração em tempo real com bases de dados oficiais nem padronização da camada de integração --- lacunas que o BulaIa visa preencher.
+
+No cenário internacional, plataformas consolidadas como Drugs.com, Epocrates e Micromedex oferecem consultas abrangentes a informações farmacêuticas, incluindo interações medicamentosas, posologia e efeitos adversos. Entretanto, essas soluções operam sobre bases regulatórias estrangeiras --- principalmente a FDA (\textit{Food and Drug Administration}) norte-americana --- e não contemplam as particularidades do arcabouço regulatório brasileiro, como a nomenclatura padronizada pela ANVISA, as classes terapêuticas nacionais e as bulas aprovadas para comercialização no Brasil. Além disso, nenhuma dessas plataformas disponibiliza integração direta com a base oficial do Bulário Eletrônico da ANVISA, inviabilizando seu uso como fonte primária para sistemas de informação farmacêutica voltados ao contexto brasileiro.
+
+\subsection{Protocolos de Integração para LLMs}
+
+Antes do MCP, a integração de LLMs com sistemas externos era realizada por mecanismos proprietários ou customizados. O Function Calling da OpenAI~\cite{openai2023function} permite que modelos invoquem funções definidas pelo desenvolvedor, mas carece de padronização entre provedores. Frameworks como LangChain~\cite{chase2022langchain} focam primariamente na composição de pipelines de RAG sem estabelecer protocolo padronizado de comunicação. Trabalhos sobre Toolformer~\cite{schick2023toolformer} e Gorilla~\cite{patil2023gorilla} demonstraram a capacidade de LLMs de aprender a utilizar APIs externas, mas também sem propor padrões interoperáveis.
+
+Essa fragmentação se estende às soluções de orquestração de agentes oferecidas por provedores de infraestrutura em nuvem. O AWS Bedrock Agents da Amazon permite configurar agentes que invocam APIs externas e acessam bases de conhecimento, mas opera exclusivamente dentro do ecossistema AWS com modelos hospedados no Bedrock. De forma análoga, o Databricks Mosaic AI oferece integração de agentes com ferramentas e dados corporativos, porém restrita à plataforma Databricks e ao seu \textit{lakehouse}. Ambas as soluções ilustram o problema $N \times M$: cada provedor define seu próprio mecanismo de integração, exigindo reimplementação para cada combinação de modelo e fonte de dados. O protocolo MCP surge como alternativa aberta a essa proliferação de conectores proprietários.
+
+O protocolo MCP foi anunciado pela Anthropic em novembro de 2024~\cite{anthropic2024mcp} como resposta direta ao problema de fragmentação de integrações. Em dezembro de 2025, o protocolo foi transferido à \emph{Agentic AI Foundation} (AAIF), fundo sob a Linux Foundation cofundado por Anthropic, Block e OpenAI, sinalizando adoção ampla do padrão pela comunidade~\cite{wikipedia2025mcp}. Por ser recente, há ainda escassez de trabalhos acadêmicos documentando sua aplicação a domínios específicos, o que reforça a relevância da presente proposta.
+
+\subsection{Lacunas e Oportunidades}
+
+A análise revela três lacunas principais: ausência de implementações documentadas do protocolo MCP para dados farmacêuticos oficiais no Brasil; falta de consideração por particularidades linguísticas e regulatórias brasileiras em sistemas existentes; e poucos sistemas que adaptem a complexidade de respostas conforme o público-alvo de forma integrada ao protocolo de comunicação. O BulaIa é proposto como resposta direta a essas três lacunas.
+
+% =============================================================
+% SEÇÃO 3 — FUNDAMENTOS TEÓRICOS (versão revisada)
+% =============================================================
+
+\section{Fundamentos Teóricos do Model Context Protocol}
+\label{sec:fundamentos}
+
+Esta seção apresenta os fundamentos conceituais do Model Context Protocol
+necessários para compreender as decisões de projeto do BulaIa. O
+tratamento é deliberadamente genérico: o objetivo é estabelecer o
+vocabulário e as abstrações do protocolo antes de qualquer aplicação
+específica. Exemplos concretos de mensagens e declarações de primitivas
+são reservados à Seção~\ref{sec:metodologia}, onde o protocolo é
+analisado em seu contexto de uso real.
+
+% ------------------------------------------------------------
+\subsection{Papel do Protocolo}
+\label{subsec:visao-geral}
+% ------------------------------------------------------------
+
+O Model Context Protocol é um padrão de código aberto que define como
+aplicações de inteligência artificial se conectam a sistemas e fontes de
+dados externos~\cite{anthropic2024mcp,hou2025mcp}. Para compreender
+corretamente seu papel, é essencial distinguir o que o protocolo é do que
+ele faz: o MCP é um \textbf{protocolo de comunicação}, que opera na
+camada de integração entre o modelo de linguagem e o mundo externo. Ele
+especifica o formato das mensagens trocadas, os mecanismos de transporte
+suportados e a forma de descoberta de capacidades, mas não prescreve como
+informações são armazenadas ou recuperadas internamente pelos servidores
+que o implementam~\cite{databricks2025mcp}.
+
+Essa distinção tem consequências práticas importantes. Estratégias de
+recuperação como RAG com bancos vetoriais, chamadas diretas a APIs REST
+ou acesso a sistemas de arquivos podem todas ser implementadas
+\emph{dentro} de um servidor MCP, que as expõe ao modelo por meio de uma
+interface uniforme. O protocolo é agnóstico a essas escolhas e as encapsula
+de forma padronizada~\cite{ibm2025mcp}. O que o MCP resolve é o problema de
+fragmentação de integrações: sem um padrão comum, cada uma das $N$
+aplicações que precisam acessar cada uma das $M$ fontes de dados exige um
+conector distinto, resultando em $N \times M$ implementações. Com o MCP, o
+problema se reduz a $N + M$: qualquer cliente compatível pode utilizar
+qualquer servidor sem adaptação adicional~\cite{hou2025mcp}.
+
+% ------------------------------------------------------------
+\subsection{Hierarquia de Controle}
+\label{subsec:arquitetura}
+% ------------------------------------------------------------
+
+A arquitetura do MCP organiza os componentes em camadas com
+responsabilidades bem delimitadas e uma hierarquia de controle clara.
+Compreender essa hierarquia é fundamental para entender por que cada
+gerenciador existe e como cada um se encaixa no fluxo de uma interação.
+A Figura~\ref{fig:mcp-architecture} ilustra essa organização.
+
+\begin{figure}[!htb]
+\centering
+\includegraphics[width=1\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/mcp_architecture2.png}
+\caption{Arquitetura do Model Context Protocol: o modelo de linguagem
+atua como motor de raciocínio no topo; o cliente MCP traduz suas
+decisões em mensagens padronizadas; o roteador do servidor as despacha
+para o gerenciador competente; as fontes de dados ficam encapsuladas na
+base.}
+\label{fig:mcp-architecture}
+\end{figure}
+
+No topo da hierarquia encontra-se o \textbf{modelo de linguagem}, que
+atua como motor de raciocínio: lê os metadados das capacidades
+disponíveis e decide, de forma autônoma, quando e como invocar cada
+primitiva do protocolo. O modelo não acessa diretamente nenhuma fonte de
+dados; toda interação com o mundo externo é mediada pelo protocolo.
+
+Imediatamente abaixo está o \textbf{cliente MCP}, componente da aplicação
+host responsável por capturar as decisões do modelo, traduzi-las em
+mensagens JSON-RPC padronizadas e encaminhá-las ao servidor. O cliente
+também recebe os resultados, injeta-os no contexto do modelo e gerencia o
+ciclo de vida da sessão. Uma mesma aplicação pode manter múltiplos
+clientes MCP ativos, cada um conectado a um servidor distinto, permitindo
+agregação de dados de diversas fontes de forma coordenada~\cite{workos2025mcp}.
+
+Na base da hierarquia de controle, mas no núcleo operacional da
+integração, está o \textbf{servidor MCP}: o componente determinístico que
+recebe requisições do cliente, executa a lógica correspondente --- consultas
+a APIs, leituras de arquivos, computações --- e retorna resultados
+estruturados. Por fim, as \textbf{fontes de dados} --- APIs externas, bancos
+de dados, sistemas de arquivos --- são acessadas exclusivamente pelo
+servidor, que encapsula sua complexidade e torna quaisquer mudanças nessas
+fontes transparentes ao cliente e ao modelo.
+
+\subsubsection{Camada de Aplicação Cliente}
+
+A camada de aplicação compreende a interface de usuário, a lógica de
+negócio da aplicação e o cliente MCP propriamente dito. O cliente MCP
+implementa as especificações do protocolo: inicia conexões com servidores,
+gerencia o ciclo de vida de sessões, realiza descoberta de capacidades e
+traduz requisições em mensagens JSON-RPC. Uma mesma aplicação pode manter
+múltiplos clientes MCP ativos simultaneamente, cada um conectado a um
+servidor diferente, permitindo agregação de dados de diversas fontes de
+forma coordenada.
+
+\subsubsection{Camada de Protocolo}
+
+A camada de protocolo opera como intermediária, implementando a camada de
+transporte (que abstrai stdio, SSE e WebSocket), o protocolo de mensagens
+JSON-RPC 2.0 (que define a estrutura de requisições, respostas e
+notificações) e o roteador de mensagens (responsável pela entrega
+ordenada e pela associação de requisições a suas respostas por meio do
+campo \texttt{id}).
+
+\subsubsection{Camada de Fontes de Dados}
+
+Na base da estrutura encontram-se as fontes de dados: bancos relacionais
+ou NoSQL, sistemas de arquivos, APIs de serviços externos. O servidor MCP
+atua como camada de abstração que encapsula o acesso a essas fontes,
+expondo uma interface uniforme por meio de suas primitivas. Mudanças nas
+fontes subjacentes --- como substituir uma API REST por um pipeline de
+RAG --- ficam isoladas no servidor e são transparentes ao cliente.
+
+% ------------------------------------------------------------
+\subsection{Roteador de Mensagens}
+\label{subsec:roteador}
+% ------------------------------------------------------------
+
+Internamente ao servidor MCP, um componente essencial conecta as
+requisições que chegam do cliente aos gerenciadores especializados:
+o \textbf{roteador de mensagens}. Ele é o mecanismo central que
+viabiliza a coexistência e a comunicação entre os três gerenciadores ---
+de Tools, Resources e Prompts --- sem que nenhum deles precise conhecer a
+existência dos demais.
+
+Quando o cliente envia uma mensagem ao servidor, ela carrega um campo
+\texttt{method} que identifica a operação solicitada. O roteador inspeciona
+esse campo e despacha a mensagem ao gerenciador competente:
+requisições cujo método começa com \texttt{tools/} são encaminhadas ao
+Gerenciador de Tools; as que começam com \texttt{resources/} são
+encaminhadas ao Gerenciador de Resources; e as que começam com
+\texttt{prompts/} são encaminhadas ao Gerenciador de Prompts. Após a
+execução, o gerenciador retorna o resultado ao roteador, que o empacota
+em uma resposta JSON-RPC e a envia de volta ao cliente.
+
+Esse mecanismo de despacho é análogo a um agente intermediário que, diante
+de uma solicitação do usuário, identifica qual especialista é mais adequado
+para respondê-la e encaminha a demanda ao destino correto, sem que o
+solicitante precise saber como a informação será obtida. O roteador
+também garante que cada requisição seja associada à sua resposta
+correspondente por meio de um identificador único, permitindo múltiplas
+requisições em trânsito simultâneo sem ambiguidade. Esse papel de
+orquestração interna é o que permite ao servidor MCP apresentar uma
+interface uniforme ao cliente, independentemente de quantos gerenciadores
+e fontes de dados distintas estejam operando por baixo.
+
+% ------------------------------------------------------------
+\subsection{Gerenciador de Tools}
+\label{subsec:tool-handler}
+% ------------------------------------------------------------
+
+O Gerenciador de Tools é o componente do servidor MCP responsável por
+expor e executar ações que o modelo de linguagem pode solicitar sobre o
+mundo externo. É a primitiva mais expressiva do protocolo e a que mais
+diretamente materializa as decisões do modelo em efeitos
+observáveis~\cite{mcp2025tools}.
+
+\subsubsection{Função e Motivação}
+
+O Gerenciador de Tools existe porque modelos de linguagem, por si sós,
+estão limitados ao conhecimento adquirido durante o treinamento e à
+capacidade de raciocinar sobre texto. Para agir --- consultar uma API com
+dados atualizados, executar um cálculo que exige precisão determinística,
+registrar uma informação em um banco de dados, ou acionar um serviço
+externo --- o modelo precisa de um mecanismo padronizado que traduza sua
+intenção em execução concreta. O Gerenciador de Tools é esse mecanismo.
+
+Quando o modelo decide que precisa de uma informação ou ação que não pode
+produzir por conta própria, ele emite uma solicitação de invocação de
+tool, especificando qual ferramenta deseja usar e com quais parâmetros.
+O roteador do servidor recebe essa solicitação e a encaminha ao Gerenciador
+de Tools, que valida os parâmetros de entrada, executa a lógica
+correspondente e retorna o resultado ao modelo via cliente. Esse ciclo
+pode se repetir múltiplas vezes em uma única interação: o modelo
+raciocina sobre o resultado, decide se precisa de mais informações e
+solicita novas invocações até ter contexto suficiente para gerar a
+resposta final~\cite{philschmid2025mcp}.
+
+Uma característica definidora das tools é que elas são
+\textbf{model-controlled}: quem decide quando e qual tool invocar é o
+modelo de linguagem, com base nas descrições em linguagem natural expostas
+durante a fase de descoberta~\cite{mcp2025tools}. Isso contrasta com as
+demais primitivas, em que a iniciativa de acesso cabe à aplicação ou ao
+usuário. A autonomia do modelo na seleção de ferramentas é o que torna
+tools adequadas para tarefas abertas, em que a sequência de passos não
+pode ser predeterminada pelo desenvolvedor.
+
+O Gerenciador de Tools é também o componente que garante \textbf{rastreabilidade
+de execução}: cada invocação registra qual ferramenta foi chamada, com
+quais argumentos, e qual resultado foi retornado. Em domínios regulados
+--- como o farmacêutico --- essa rastreabilidade é um requisito, pois
+permite auditar cada afirmação de uma resposta até a sua origem na fonte
+de dados.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/fig_tools}
+  \caption{Gerenciador de Tools: ciclo de invocação model-controlled e anatomia de uma declaração de tool.}
+  \label{fig:tools}
+\end{figure}
+\subsubsection{Declarações de Tools}
+
+Cada tool exposta pelo servidor MCP é declarada com três elementos
+obrigatórios: um \textbf{nome único} que o modelo utiliza para referenciá-la,
+uma \textbf{descrição em linguagem natural} que orienta a decisão do modelo
+sobre quando utilizá-la, e um \textbf{esquema de entrada} (JSON Schema) que
+especifica os parâmetros esperados, seus tipos, quais são obrigatórios e
+quais restrições de valor se aplicam. O conjunto dessas declarações
+constitui o contrato de comunicação entre o modelo e o servidor: é por
+meio delas que o modelo raciocina sobre quais ferramentas estão
+disponíveis durante a fase de descoberta.
+
+\subsubsection{Dados Transacionais de Entrada e Saída}
+
+Durante a execução, o Gerenciador de Tools opera sobre \textbf{dados
+transacionais e parametrizados}. Os dados de entrada são os argumentos
+fornecidos pelo modelo ao invocar uma tool, validados contra o esquema
+declarado. Os dados de saída podem assumir três formas: texto plano,
+estruturas JSON ou conteúdo tipado conforme declarado pela ferramenta.
+
+A natureza desses dados é necessariamente dinâmica: o mesmo conjunto de
+parâmetros pode produzir resultados completamente distintos dependendo do
+estado atual da fonte de dados subjacente. É exatamente por isso que tools
+não são adequadas para dados de referência estáveis --- para esses, o
+protocolo oferece a primitiva de Resources. Tools são a escolha correta
+quando a operação tem efeitos colaterais potenciais (escrita em banco,
+envio de notificação) ou quando o resultado depende de parâmetros que só
+são conhecidos durante a interação.
+
+No contexto do BulaIa, as tools mapeiam operações como busca de
+medicamentos por nome ou princípio ativo, e recuperação de seções
+específicas de uma bula a partir do número de registro --- operações
+transacionais cujos resultados dependem dos parâmetros de busca e do
+estado atual da base da ANVISA.
+
+% ------------------------------------------------------------
+\subsection{Gerenciador de Resources}
+\label{subsec:resource-manager}
+% ------------------------------------------------------------
+
+O Gerenciador de Resources é o componente responsável por expor dados
+passivos identificáveis por endereços padronizados. Se as tools são os
+\emph{verbos} do protocolo --- ações que o modelo pode executar ---,
+os resources são os \emph{substantivos}: entidades de dados que podem
+ser referenciadas, lidas e incorporadas ao contexto de uma
+interação~\cite{getknit2025mcp}.
+
+\subsubsection{Função e Motivação}
+
+O Gerenciador de Resources existe para disponibilizar ao modelo de
+linguagem dados de referência que não resultam de uma operação dinâmica,
+mas sim de uma consulta a uma entidade identificável e estável. A
+distinção fundamental em relação às tools é que resources \textbf{não
+executam lógica arbitrária} e \textbf{não produzem efeitos colaterais}:
+eles representam dados que podem ser lidos, não ações que podem ser
+executadas~\cite{kubaski2025mcp}.
+
+Essa separação tem motivação prática. Uma tool que buscasse sempre todos
+os dados de referência de que o modelo pode precisar consumiria janela de
+contexto desnecessariamente e introduziria latência de rede em cada
+interação. Resources permitem que dados de referência estáveis ou
+semi-estáveis --- listas de categorias, documentos base, configurações ---
+sejam expostos de forma eficiente, com URIs previsíveis que o cliente
+pode incorporar ao contexto do modelo quando relevante, sem invocar
+lógica de execução.
+
+Diferentemente das tools, resources seguem um modelo de controle
+\textbf{application-controlled}: quem decide quais resources incluir no
+contexto é a aplicação cliente (ou o usuário), e não o modelo por conta
+própria~\cite{dailydoseofds2025mcp}. Isso reflete a natureza dos dados que
+resources expõem --- dados de fundo, que proveem contexto interpretativo
+ao modelo, em vez de respostas a consultas específicas.
+
+O Gerenciador de Resources também suporta um mecanismo de subscrição: o
+cliente pode registrar interesse em um resource e receber notificações
+quando seu conteúdo é atualizado. Isso é especialmente relevante em
+domínios regulatórios, onde documentos como bulas de medicamentos podem
+ser alterados por decisões da agência reguladora e o sistema deve reagir
+a essas mudanças sem necessidade de reindexação manual.
+
+\subsubsection{Endereçamento por URI}
+
+O Gerenciador de Resources opera sobre \textbf{dados identificáveis por
+URI}, no formato \texttt{esquema://caminho/recurso}. O esquema identifica
+o servidor MCP responsável, e o caminho especifica o dado particular
+dentro do domínio desse servidor. Cada resource é exposto com metadados
+que incluem URI, nome legível, descrição, tipo MIME e, opcionalmente,
+anotações de audiência e prioridade. Esse modelo de endereçamento torna
+resources previsíveis e navegáveis: o cliente pode construir URIs
+programaticamente sem depender de descoberta prévia.
+
+\subsubsection{Resources Estáticos e Dinâmicos}
+
+Os dados gerenciados podem ser \textbf{estáticos} --- com URI fixa e
+conteúdo imutável, como um glossário de termos farmacológicos --- ou
+\textbf{dinâmicos} --- com conteúdo gerado no momento da leitura, mas
+sempre acessado pela mesma URI, como os metadados de um medicamento
+específico cujo registro pode ser atualizado pela ANVISA. Em ambos os
+casos, o modelo não precisa saber se o dado é estático ou dinâmico; ele
+acessa o resource pela URI e o Gerenciador entrega o conteúdo serializado
+no formato adequado. Essa transparência permite que a origem dos dados
+mude sem impacto no cliente.
+
+\subsubsection{Formatos de Conteúdo}
+
+Formatos suportados incluem texto plano, JSON estruturado e conteúdo
+MIME-typed genérico. Essa flexibilidade permite que o mesmo gerenciador
+sirva recursos tão distintos quanto um arquivo de texto, um esquema de
+banco de dados ou uma resposta de API que não requer parâmetros de busca.
+No BulaIa, resources são usados para expor listas de princípios ativos
+e diretórios de laboratórios --- dados que o modelo pode precisar consultar
+para interpretar uma pergunta, mas que não variam a cada consulta.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/fig_resources}
+  \caption{Gerenciador de Resources: endereçamento por URI, contraste com Tools e suporte a recursos estáticos, dinâmicos e subscrição.}
+  \label{fig:resources}
+\end{figure}
+% ------------------------------------------------------------
+\subsection{Gerenciador de Prompts}
+\label{subsec:prompt-manager}
+% ------------------------------------------------------------
+
+O Gerenciador de Prompts é o componente responsável por administrar
+templates de prompt reutilizáveis que configuram o comportamento e o
+contexto do modelo para tarefas específicas. É a primitiva do protocolo
+mais diretamente voltada à camada de raciocínio do sistema: enquanto tools
+e resources influenciam o que o modelo sabe e pode fazer, prompts
+influenciam \emph{como} o modelo interpreta o que sabe e decide o que
+fazer~\cite{workos2025mcp}.
+
+\subsubsection{Função e Motivação}
+
+O Gerenciador de Prompts existe para centralizar e versionar o
+conhecimento sobre como o modelo deve se comportar em cenários específicos,
+desacoplando esse conhecimento do código da aplicação cliente. Sem essa
+primitiva, instruções de sistema --- restrições de segurança, padrões de
+resposta, instruções de tom e audiência --- precisariam ser codificadas
+diretamente em cada cliente que utiliza o servidor, tornando atualizações
+trabalhosas e propensas a inconsistências~\cite{kubiya2025mcp}.
+
+Ao externalizar os templates no servidor, o Gerenciador de Prompts garante
+que qualquer cliente MCP compatível tenha acesso ao mesmo conjunto de
+instruções validadas, e que alterações --- como adicionar uma advertência
+regulatória obrigatória ou ajustar o nível de linguagem para um novo
+perfil de usuário --- sejam realizadas em um único lugar, com efeito
+imediato sobre todos os clientes. Essa centralização é especialmente
+valiosa em domínios regulados, onde a conformidade de linguagem e as
+advertências de segurança não podem diferir entre implementações.
+
+O controle dos prompts segue um modelo \textbf{user-controlled}: prompts
+são tipicamente selecionados pela aplicação ou pelo usuário, não pelo
+modelo de forma autônoma~\cite{philschmid2025mcp}. Isso faz sentido porque
+a escolha do comportamento esperado é uma decisão de contexto --- quem está
+perguntando, com que finalidade, e em que nível de especialidade ---
+que só o usuário ou a aplicação conhecem no momento da interação.
+
+O Gerenciador de Prompts também suporta versionamento de templates, o que
+facilita experimentação controlada: diferentes versões de um mesmo
+template podem coexistir no servidor, permitindo comparação de
+comportamentos sem necessidade de alterar infraestrutura. Em termos de
+comunicação interna, o roteador do servidor encaminha as requisições de
+descoberta (\texttt{prompts/list}) e de recuperação
+(\texttt{prompts/get}) ao Gerenciador de Prompts, que substitui os
+argumentos declarados no template e retorna a sequência de mensagens
+de sistema pronta para ser injetada no contexto do modelo.
+
+\subsubsection{Templates Parametrizados}
+
+O Gerenciador de Prompts opera sobre \textbf{metadados de comportamento}:
+templates textuais parametrizados que, quando instanciados, configuram o
+papel, o tom, as restrições e os objetivos do modelo para uma interação
+específica. Cada template é declarado com nome, descrição e uma lista de
+argumentos --- obrigatórios e opcionais --- cujos valores são fornecidos
+pelo cliente no momento da recuperação e substituídos no corpo do template.
+Essa parametrização permite que um mesmo template sirva múltiplos cenários
+de uso sem duplicação de lógica.
+
+\subsubsection{Mensagens de Sistema Geradas}
+
+Os dados de saída do gerenciador são \textbf{sequências de mensagens
+estruturas} no formato que o modelo espera receber como contexto de
+sistema. Essas mensagens podem combinar texto fixo --- instruções
+permanentes, como restrições de segurança --- com texto interpolado a
+partir dos argumentos fornecidos, como idioma de resposta ou perfil de
+usuário. A distinção entre partes fixas e partes variáveis do template é
+gerenciada pelo próprio gerenciador, que entrega ao cliente a mensagem
+final já consolidada.
+
+No BulaIa, o Gerenciador de Prompts administra templates que
+configuram o modelo para dois perfis distintos de usuário: o modo paciente,
+com instruções de linguagem simplificada e advertências obrigatórias de
+consulta médica, e o modo profissional, com instruções de completude
+técnica e citação direta de fontes regulatórias. A troca de perfil não
+exige nenhuma alteração no código cliente: basta solicitar um template
+diferente ao Gerenciador de Prompts.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/fig_prompts}
+  \caption{Gerenciador de Prompts: fluxo de recuperação de template e comparação entre os modos paciente e profissional do BulaIa.}
+  \label{fig:prompts}
+\end{figure}
+\FloatBarrier
+% ------------------------------------------------------------
+\subsection{Articulação entre Primitivas}
+\label{subsec:articulacao}
+% ------------------------------------------------------------
+
+Os três gerenciadores formam um sistema coeso porque cada um resolve uma
+dimensão distinta do problema de integração entre modelos de linguagem e
+sistemas externos. A Tabela~\ref{tab:primitivas-comparacao} sintetiza as
+características fundamentais de cada gerenciador, evidenciando suas
+diferenças de controle, tipo de dado e papel funcional.
+
+\begin{table}[htbp]
+\centering
+\caption{Comparação das primitivas do protocolo MCP}
+\label{tab:primitivas-comparacao}
+\begin{tabularx}{\textwidth}{| l | >{\raggedright\arraybackslash}X |
+    >{\raggedright\arraybackslash}X | >{\raggedright\arraybackslash}X |}
+\hline
+\textbf{Dimensão} & \textbf{Tools} & \textbf{Resources} & \textbf{Prompts} \\
+\hline
+Analogia & Verbos: ações do sistema & Substantivos: dados do sistema & Advérbios: como o modelo age \\
+\hline
+Quem controla & Modelo (autônomo) & Aplicação ou usuário & Usuário ou aplicação \\
+\hline
+Tipo de dado & Transacional, parametrizado, com efeitos & Passivo, identificado por URI, sem efeitos & Templates de comportamento e restrições \\
+\hline
+Produz efeitos colaterais & Sim (possível) & Não & Não \\
+\hline
+Atualização de conteúdo & A cada invocação & Sob demanda ou subscrição & Versionamento explícito \\
+\hline
+Roteamento no servidor & \texttt{tools/*} & \texttt{resources/*} & \texttt{prompts/*} \\
+\hline
+\end{tabularx}
+\end{table}
+
+Uma interação típica com um sistema baseado em MCP mobiliza os três
+gerenciadores de forma complementar e sequencial. O Gerenciador de
+Prompts configura o contexto inicial: define quem o modelo é e como deve
+se comportar. O Gerenciador de Resources provê dados de fundo que o
+cliente incorpora ao contexto antes mesmo de o modelo começar a
+raciocinar. O Gerenciador de Tools é acionado pelo próprio modelo ao
+longo do raciocínio, sempre que ele identifica a necessidade de informação
+que não possui ou de ação que não pode executar por conta própria. O
+roteador do servidor garante que cada mensagem chegue ao gerenciador certo,
+e que o resultado retorne ao cliente de forma ordenada e rastreável.
+
+% ------------------------------------------------------------
+\subsection{Fluxo de Descoberta e Execução}
+\label{subsec:fluxo}
+% ------------------------------------------------------------
+
+O protocolo estrutura a comunicação em quatro etapas sequenciais. Na
+\textbf{inicialização}, cliente e servidor negociam versão do protocolo
+e capacidades suportadas por meio de um handshake. Somente após essa
+confirmação mútua o cliente pode solicitar descoberta de capacidades.
+
+Na \textbf{descoberta}, o cliente consulta os três gerenciadores ---
+\texttt{tools/list}, \texttt{resources/list} e \texttt{prompts/list} ---
+para obter os metadados de todas as capacidades disponíveis. O resultado
+de \texttt{tools/list} é especialmente crítico: nome, descrição e
+esquema de entrada de cada tool são injetados no contexto do sistema
+enviado ao LLM, e é a leitura desses metadados que permite ao modelo
+raciocinar sobre quais ferramentas estão disponíveis e quando utilizá-las.
+A qualidade das descrições em linguagem natural impacta diretamente o
+comportamento do modelo~\cite{mcp2025tools}.
+
+Na \textbf{injeção de contexto}, o prompt recuperado do Gerenciador de
+Prompts é combinado com metadados de tools e, eventualmente, com recursos
+selecionados pelo cliente, formando o contexto inicial enviado ao modelo.
+Esse contexto estabelece as restrições de comportamento e o conhecimento
+sobre capacidades antes da primeira geração.
+
+Na \textbf{execução iterativa}, o modelo raciocina, invoca tools quando
+necessário, recebe resultados e decide se tem informação suficiente para
+gerar a resposta final. Cada invocação de tool é uma rodada independente
+de comunicação, mediada pelo roteador do servidor. O ciclo só termina
+quando o modelo considera que o contexto acumulado é suficiente para
+produzir uma resposta satisfatória~\cite{kubiya2025mcp}.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.95\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/fig_sequence.png}
+  \caption{Fluxo completo de comunicação MCP: das quatro fases sequenciais — inicialização, descoberta, execução iterativa e resposta — com os atores e mensagens JSON-RPC envolvidos.}
+  \label{fig:sequence}
+\end{figure}
+% ------------------------------------------------------------
+\subsection{Mecanismos de Transporte}
+\label{subsec:transporte}
+% ------------------------------------------------------------
+
+O protocolo MCP suporta três mecanismos de transporte, selecionados
+conforme o contexto de implantação. O transporte \textbf{stdio} é
+adequado para servidores executando como processos locais: a comunicação
+ocorre via entrada e saída padrão e é o mecanismo mais simples, sem
+overhead de rede. O transporte \textbf{HTTP com SSE}
+(\textit{Server-Sent Events}) permite que o servidor envie múltiplas
+mensagens ao cliente sobre uma única conexão aberta, indicado para
+cenários remotos onde notificações assíncronas são necessárias. O
+transporte \textbf{WebSocket} fornece comunicação bidirecional de baixa
+latência sobre conexões persistentes, adequado para aplicações com alto
+volume de troca de mensagens.
+
+% ------------------------------------------------------------
+\subsection{MCP e RAG: Camadas Complementares}
+\label{subsec:mcp-rag}
+% ------------------------------------------------------------
+
+O protocolo MCP não compete com RAG nem o substitui, pois opera em uma
+camada diferente do problema~\cite{databricks2025mcp}. O MCP resolve o
+problema de \emph{integração} --- como um modelo se conecta a fontes
+externas de forma padronizada e reutilizável. RAG resolve o problema de
+\emph{recuperação} --- como informação relevante é selecionada de um
+corpus para compor o contexto do modelo. Os dois podem coexistir: um
+servidor MCP pode expor um pipeline completo de RAG como uma única tool,
+tornando-o acessível a qualquer cliente compatível sem que este precise
+conhecer os detalhes internos. No contexto do BulaIa, a disponibilidade
+de uma API estruturada e atualizada da ANVISA torna desnecessária a
+indexação prévia por embeddings --- mas essa é uma decisão específica do
+domínio, não uma propriedade do protocolo~\cite{hou2025mcp}.
+
+% =============================================================
+% SEÇÃO 4 — API ANVISA (original, sem alterações)
+% =============================================================
+
+\section{A API do Bulário Eletrônico ANVISA}
+\label{sec:anvisa}
+
+A ANVISA disponibiliza acesso programático ao seu Bulário Eletrônico por meio de uma API REST pública~\cite{anvisa2024}. Esta seção descreve as capacidades e limitações dessa API, que fundamentam as decisões de projeto do servidor MCP do BulaIa e justificam a escolha por acesso direto em detrimento de indexação por embeddings.
+
+\subsection{Capacidades da API}
+
+A API expõe endpoints que permitem consultas ao cadastro de medicamentos registrados no Brasil. É possível realizar \textbf{busca de medicamentos} por nome comercial, princípio ativo, laboratório ou número de registro, retornando listas paginadas de produtos correspondentes. Para cada medicamento localizado, é possível obter \textbf{metadados completos} --- número de registro, nome comercial, laboratório, princípio ativo, classe terapêutica, via de administração e situação regulatória atual --- bem como o \textbf{conteúdo integral da bula} em formato estruturado, com seções de indicações, contraindicações, posologia, reações adversas e interações medicamentosas. Adicionalmente, é possível listar \textbf{princípios ativos} e \textbf{laboratórios farmacêuticos} registrados, permitindo consultas cruzadas como identificar todos os medicamentos que contêm determinada substância ativa.
+
+\subsection{Características Relevantes para o BulaIa}
+
+Do ponto de vista do projeto de sistema, dois aspectos são determinantes. Primeiro, a API reflete \textbf{dados em tempo real}: atualizações de bulas, recalls e modificações regulatórias são imediatamente acessíveis, sem necessidade de reindexação local. Segundo, os dados são \textbf{estruturados e identificados por URIs previsíveis}, tornando-os naturalmente mapeáveis para as primitivas de Resources do protocolo MCP. Essas características fazem da API ANVISA um caso de uso exemplar para integração direta via MCP: a garantia de atualidade justifica o acesso em tempo real em detrimento de indexação prévia, opção que seria válida caso a fonte de dados fosse um corpus estático de grande volume.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/fig_anvisa.png}
+  \caption{Endpoints da API REST pública do Bulário Eletrônico ANVISA e seu mapeamento para as primitivas Tools e Resources do protocolo MCP.}
+  \label{fig:anvisa}
+\end{figure}
+\subsection{Limitações da API}
+
+A disponibilidade do serviço depende da infraestrutura da ANVISA, introduzindo ponto único de falha externo. O volume de dados de bulas completas pode ser extenso, demandando extração de seções específicas para uso eficiente do contexto do modelo. Variações de formatação entre bulas de diferentes laboratórios exigem parsing robusto para identificação confiável de seções. Essas limitações são endereçadas nas decisões de implementação descritas na Seção~\ref{sec:implementacao}.
+
+% =============================================================
+% SEÇÃO 5 — METODOLOGIA (original, sem alterações)
+% =============================================================
+
+\section{Metodologia}
+\label{sec:metodologia}
+
+Esta seção descreve a arquitetura do sistema BulaIa e as decisões de projeto que a motivam. A exposição segue a estrutura em camadas do sistema: primeiro a visão geral da arquitetura, depois o detalhamento do servidor MCP e de suas primitivas, e por fim o pipeline de consulta e o mecanismo de diferenciação de perfis de usuário.
+
+\subsection{Arquitetura Geral do Sistema}
+
+O BulaIa é organizado em três camadas: a \textbf{camada de dados}, composta pela API ANVISA; a \textbf{camada de protocolo}, implementada pelo servidor MCP customizado; e a \textbf{camada de aplicação}, que integra o LLM com a interface conversacional. A Figura~\ref{fig:arquitetura} ilustra os componentes e seus fluxos de interação, evidenciando como o protocolo MCP atua como intermediário padronizado entre a fonte de dados oficial e o modelo de linguagem.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.85\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/mcp_architecture.png}
+\caption{Arquitetura técnica do BulaIa: a API ANVISA alimenta o servidor MCP, que expõe Tools, Resources e Prompts para o LLM, cuja resposta é validada pelo pipeline de juízes antes de ser entregue ao usuário.}
+\label{fig:arquitetura}
+\end{figure}
+
+Conforme ilustrado na Figura~\ref{fig:arquitetura}, o servidor MCP isola o LLM dos detalhes de implementação da API ANVISA. Eventuais mudanças na API da ANVISA --- ou mesmo a substituição da estratégia de recuperação por um pipeline de RAG --- afetam apenas o servidor MCP, sem impacto na lógica da aplicação cliente ou no comportamento do modelo. O pipeline de validação por juízes, executado antes da entrega ao usuário, garante que apenas respostas que atendam aos critérios de segurança, qualidade, fonte e formato sejam apresentadas.
+
+\subsection{Servidor MCP ANVISA}
+
+O servidor MCP ANVISA atua como ponte de interoperabilidade do sistema. Embora o fluxo de chat interno da aplicação acesse os registros de ferramentas localmente para otimização de latência, a lógica de integração com a API da ANVISA é encapsulada e exposta para clientes externos por meio de um servidor MCP completo (\texttt{mcp\_server.js}). Este servidor traduz as capacidades de acesso a dados em primitivas padronizadas do protocolo, tornando-as acessíveis a qualquer LLM ou ecossistema agente compatível, sem exigir conhecimento dos endpoints originais da ANVISA. O servidor expõe seis tools organizadas por função, quatro tipos de resources e cinco prompts, atendendo a perfis distintos de consulta farmacêutica.
+
+\subsubsection{Tools Implementadas}
+
+As tools são organizadas em duas categorias: ferramentas de \textbf{acesso a dados} (busca, detalhes, extração de seção) e ferramentas de \textbf{análise} (consulta com geração, verificação de interações, validação por juízes). A Tabela~\ref{tab:mcp-tools} sumariza os parâmetros e retornos de cada tool.
+
+\begin{table}[H]
+\centering
+\small
+\caption{Tools MCP implementadas no servidor ANVISA}
+\label{tab:mcp-tools}
+\begin{tabularx}{\textwidth}{|p{2.6cm}|p{3.4cm}|X|}
+\hline
+\textbf{Tool} & \textbf{Parâmetros} & \textbf{Retorno} \\
+\hline
+\multicolumn{3}{|l|}{\textit{Acesso a dados}} \\
+\hline
+\texttt{search\_} \texttt{medication}
+  & query: string, limit: int (opc.)
+  & Lista de medicamentos com registro, nome e laboratório \\
+\hline
+\texttt{get\_medication\_} \texttt{details}
+  & registro: string
+  & Metadados completos e conteúdo integral da bula \\
+\hline
+\texttt{get\_section}
+  & registro: string, section: enum\textsuperscript{*}
+  & Texto da seção específica da bula \\
+\hline
+\multicolumn{3}{|l|}{\textit{Análise e validação}} \\
+\hline
+\texttt{query\_} \texttt{medication}
+  & question: string, mode: enum
+  & Resposta do LLM com avaliação por juízes \\
+\hline
+\texttt{check\_} \texttt{interactions}
+  & drugs: array de strings
+  & Análise de interações medicamentosas \\
+\hline
+\texttt{validate\_} \texttt{response}
+  & query: string, response: string, sources: array
+  & Resultado dos juízes com pontuação e decisão \\
+\hline
+\multicolumn{3}{|p{\dimexpr\textwidth-2\tabcolsep-2\arrayrulewidth}|}%
+  {\footnotesize \textsuperscript{*}Valores de \texttt{section}:
+  indicacoes, contraindicacoes, posologia, reacoes\_adversas,
+  interacoes, precaucoes, mecanismo\_acao, farmacocinetica.} \\
+\hline
+\end{tabularx}
+\end{table}
+
+As ferramentas de acesso a dados formam uma hierarquia de granularidade. A ferramenta \texttt{search\_medication} realiza busca fuzzy normalizada sobre múltiplos campos da base ANVISA, retornando medicamentos correspondentes mesmo com nomenclatura coloquial ou parcial. A ferramenta \texttt{get\_medication\_details} retorna metadados completos e conteúdo integral da bula para um código de registro específico. A ferramenta \texttt{get\_section} permite acesso direcionado a seções individuais da bula sem carregar o documento completo, reduzindo uso de contexto e melhorando latência para perguntas específicas. A hierarquia entre essas ferramentas é a principal decisão de projeto na camada de servidor: o modelo pode resolver perguntas simples com menor custo computacional, recorrendo a cargas maiores de dados apenas quando a complexidade da consulta exige.
+
+As ferramentas de análise encapsulam lógica de geração e validação. A ferramenta \texttt{query\_medication} integra geração de resposta pelo LLM com avaliação automática pelo pipeline de juízes, suportando os modos paciente e profissional. A ferramenta \texttt{check\_interactions} analisa interações medicamentosas entre dois ou mais fármacos a partir de dados de bula. A ferramenta \texttt{validate\_response} expõe o pipeline de juízes especializados como ferramenta independente, permitindo que respostas geradas externamente sejam avaliadas segundo os mesmos critérios de segurança, qualidade, atribuição de fontes e formatação.
+
+A Listagem~\ref{lst:tool-declaration} ilustra a declaração JSON de uma das tools expostas pelo servidor MCP.
+
+\begin{lstlisting}[caption={Declaração JSON de uma tool MCP para busca de medicamentos}, label={lst:tool-declaration}]
+{
+  "name": "search_medication",
+  "description": "Busca medicamentos na base ANVISA por nome
+  comercial, principio ativo ou laboratorio. Retorna lista
+  paginada com registros correspondentes.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "Termo de busca: nome comercial,
+          principio ativo ou laboratorio"
+      },
+      "limit": {
+        "type": "integer",
+        "description": "Numero maximo de resultados (padrao: 10)",
+        "default": 10
+      }
+    },
+    "required": ["query"]
+  }
+}
+\end{lstlisting}
+
+A qualidade das descrições --- tanto da tool quanto de cada campo do schema --- é determinante para o comportamento do LLM: o modelo lê esses metadados durante a fase de descoberta e os utiliza para raciocinar sobre quando e como invocar cada tool.
+
+\FloatBarrier
+
+\subsubsection{Resources Expostos}
+
+O servidor define quatro tipos de resources. Bulas individuais são identificadas por URIs no formato \texttt{anvisa://bulario/medication/\{registro\}}, retornando representação estruturada com metadados e texto por seções. O resource \texttt{anvisa://bulario/medications} disponibiliza a listagem geral de todos os medicamentos registrados na base. A Listagem~\ref{lst:resource-response} exemplifica a resposta ao ler o resource de uma bula.
+
+\begin{lstlisting}[caption={Resposta JSON-RPC ao ler o resource de uma bula ANVISA}, label={lst:resource-response}]
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "result": {
+    "contents": [
+      {
+        "uri": "anvisa://bulario/medication/1234567890",
+        "mimeType": "application/json",
+        "text": "{\"nome\": \"Paracetamol 500mg\",
+          \"laboratorio\": \"EMS\",
+          \"indicacoes\": \"Alivio de dor leve a moderada...\",
+          \"contraindicacoes\": \"Insuficiencia hepatica grave...\"
+        }"
+      }
+    ]
+  }
+}
+\end{lstlisting}
+
+O resource \texttt{anvisa://bulario/active-ingredients} disponibiliza a lista completa de substâncias ativas, possibilitando consultas como ``quais medicamentos contêm ibuprofeno?''. O resource \texttt{anvisa://bulario/laboratories} expõe o diretório de laboratórios com seus portfólios de produtos registrados.
+
+\subsubsection{Prompts Definidos}
+
+O sistema fornece cinco templates de prompt no \texttt{prompt\_manager.js} que configuram o raciocínio do LLM. Internamente, a aplicação constrói dinamicamente esses \textit{prompts} inserindo as dependências de contexto localmente, permitindo uma construção flexível. O \textbf{prompt \texttt{planner}} atua como orquestrador, definindo a estratégia de seleção de ferramentas ({\textit{Tool Selection Strategy}}) e regras estritas de fundamentação ({\textit{Grounding Rules}}). O modo de interação (paciente ou profissional) é injetado como um parâmetro dinâmico neste único prompt orquestrador. Os \textbf{prompts de juízes} (ex. \texttt{safety\_judge}, \texttt{quality\_judge}) são instanciados para avaliação crítica das respostas. Além da utilização interna pela arquitetura \textit{planner}, estes \textit{prompts} são disponibilizados para o meio externo através da primitiva \texttt{prompts/get} do servidor MCP. A Listagem~\ref{lst:prompt-get} ilustra a requisição externa via MCP para recuperar o prompt do planejador.
+
+\begin{lstlisting}[caption={Requisição e resposta para recuperar o prompt orquestrador (planner)}, label={lst:prompt-get}]
+// Requisicao do cliente
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "method": "prompts/get",
+  "params": {
+    "name": "planner",
+    "arguments": {}
+  }
+}
+
+// Resposta do servidor
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "description": "Prompt principal do agente planejador MCP BulaIA com hierarquia de selecao de tools e regras de grounding",
+    "messages": [
+      {
+        "role": "user",
+        "content": {
+          "type": "text",
+          "text": "You are BulaIA, an intelligent pharmaceutical assistant...
+          \n## YOUR ROLE\n...
+          \n## ACTIVE MODE: {mode}\n... 
+          \n## TOOL SELECTION STRATEGY\n...
+          \n## GROUNDING RULES — NON-NEGOTIABLE"
+        }
+      }
+    ]
+  }
+}
+\end{lstlisting}
+
+\subsection{Pipeline de Consulta com MCP}
+
+Diferentemente de abordagens tradicionais que usam ciclos iterativos lentos e sequenciais, o fluxo de consulta do BulaIa emprega uma arquitetura baseada em \textit{Planner} (planejador) associada à execução paralela de ferramentas. O pipeline é dividido em três fases principais:
+
+Na primeira fase, um módulo classificador híbrido analisa a pergunta. Se a confiança por correspondência de palavras-chave (\textit{keyword matching}) for inferior a um limiar aceitável (0.7), um LLM atua como \textit{fallback} para categorizar o tópico da bula (ex: posologia, contraindicações). A partir desses metadados, o \textit{Planner LLM} avalia a requisição e devolve um plano estruturado em JSON detalhando as ferramentas que deverão ser executadas independentemente.
+
+Na segunda fase, o servidor intercepta o plano e dispara as chamadas às ferramentas listadas simultaneamente (em paralelo), minimizando expressivamente a latência total da requisição. Finalmente, com todos os dados recuperados acoplados ao contexto, o modelo principal gera a resposta final baseada exclusivamente nas fontes obtidas. O Algoritmo~\ref{alg:mcp-query} detalha essa nova dinâmica de paralelismo orquestrado.
+
+\begin{center}
+\begin{framed}
+\noindent
+\begin{algorithm}[H]
+\caption{Pipeline de Consulta com Planner e Execução Paralela}
+\label{alg:mcp-query}
+\KwIn{Pergunta do usuário $Q$, Modo $M \in \{\text{paciente}, \text{profissional}\}$}
+\KwOut{Resposta contextualizada $R$ e metadados de execução}
+\BlankLine
+\textbf{Fase 1 - Classificação e Planejamento:}\\
+$topics \gets$ Classificador\_Híbrido.detect($Q$)\\
+$prompt\_plan \gets$ carregar\_prompt\_planner($M$, $Q$, $topics$)\\
+$plan \gets$ LLM\_Planner.gerar\_plano\_json($prompt\_plan$)\\
+\BlankLine
+\textbf{Fase 2 - Execução Paralela de Tools:}\\
+$resultados\_tools \gets \emptyset$\\
+\If{$plan.tools \neq \emptyset$}{
+  $resultados\_tools \gets \text{Promise.all}(\forall t \in plan.tools: execute\_tool(t.name, t.args))$\\
+}
+\BlankLine
+\textbf{Fase 3 - Geração de Resposta Final:}\\
+$context\_documentos \gets$ formatar\_resultados($resultados\_tools$)\\
+$prompt\_final \gets$ carregar\_prompt\_sistema($M$, $Q$, $context\_documentos$)\\
+$R \gets$ LLM\_Principal.chat($prompt\_final$)\\
+\BlankLine
+\Return $R, metadata(plan, resultados\_tools)$
+\end{algorithm}
+\end{framed}
+\end{center}
+
+O laço da Fase 2 é o elemento central do pipeline. A Listagem~\ref{lst:tool-call-cycle} ilustra o ciclo completo JSON-RPC de uma chamada à tool \texttt{search\_medication}.
+
+\begin{lstlisting}[caption={Ciclo JSON-RPC completo de uma chamada de tool}, label={lst:tool-call-cycle}]
+// (1) LLM decide buscar medicamento - emite:
+//   tool_name: "search_medication"
+//   arguments: { "query": "paracetamol 500" }
+
+// (2) Cliente envia ao servidor MCP:
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "method": "tools/call",
+  "params": {
+    "name": "search_medication",
+    "arguments": { "query": "paracetamol 500" }
+  }
+}
+
+// (3) Servidor executa e responde:
+{
+  "jsonrpc": "2.0",
+  "id": 7,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "[{\"registro\": \"1.2345.0001.001\",
+          \"nome\": \"Paracetamol 500mg Comprimido\",
+          \"laboratorio\": \"EMS\"}, ...]"
+      }
+    ],
+    "isError": false
+  }
+}
+
+// (4) Cliente injeta o resultado no contexto do LLM
+// O modelo pode entao invocar get_section com o registro
+// para obter a secao especifica da bula necessaria.
+\end{lstlisting}
+
+\subsection{Diferenciação de Modos de Usuário}
+
+O sistema implementa dois modos por meio de prompts MCP especializados, atendendo a perfis com necessidades e vocabulários distintos. A Figura~\ref{fig:paciente-chat} ilustra a diferença na interface para a mesma pergunta respondida nos dois modos, e a Tabela~\ref{tab:mode-comparison} detalha os comportamentos distintos em cada dimensão relevante.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=0.9\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/Paciente_profissional_chat1.png}
+  \caption{Interação nos modos paciente e profissional, evidenciando a diferença de linguagem e nível de detalhe entre os dois perfis de usuário.}
+  \label{fig:paciente-chat}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Comparação entre modos de usuário}
+\label{tab:mode-comparison}
+\begin{tabular}{|l|p{5.5cm}|p{5.5cm}|}
+\hline
+\textbf{Aspecto} & \textbf{Modo Paciente} & \textbf{Modo Profissional} \\
+\hline
+Linguagem & Evita termos técnicos, usa analogias e exemplos cotidianos & Terminologia médica precisa, conceitos farmacológicos \\
+\hline
+Nível de Detalhe & Resumido, foco em informações práticas & Completo, incluindo mecanismos de ação e farmacocinética \\
+\hline
+Estrutura & Formato conversacional & Seções técnicas bem definidas \\
+\hline
+Advertências & Linguagem acessível, encoraja consulta médica & Objetivas, com citações diretas da bula \\
+\hline
+Tools utilizadas & Preferencialmente get\_section & Todas as tools, conforme necessidade \\
+\hline
+\end{tabular}
+\end{table}
+
+Como evidenciado na Figura~\ref{fig:paciente-chat} e detalhado na Tabela~\ref{tab:mode-comparison}, a distinção entre modos vai além do vocabulário. O modo paciente, ao preferir \texttt{get\_section}, limita o volume de dados recuperados às informações estritamente necessárias para uma resposta prática, reduzindo latência e risco de sobrecarga informacional. O modo profissional, com acesso irrestrito a todas as tools, constrói respostas mais completas quando a pergunta exige análise comparativa ou acesso a mecanismos farmacológicos detalhados.
+
+\FloatBarrier
+
+% =============================================================
+% SEÇÃO 6 — IMPLEMENTAÇÃO (original, sem alterações)
+% =============================================================
+
+\section{Implementação}
+\label{sec:implementacao}
+
+Esta seção detalha as decisões técnicas relevantes na implementação do BulaIa, com ênfase nos aspectos que impactam diretamente o desempenho e a confiabilidade do sistema em um domínio de saúde.
+
+\subsection{Stack Tecnológico}
+
+A aplicação BulaIa foi desenvolvida utilizando JavaScript/Node.js e implantada na plataforma Vercel utilizando Serverless Functions. O servidor MCP interno utiliza a biblioteca oficial \texttt{@modelcontextprotocol/sdk} adaptada para execução em rotas de API assíncronas (\textit{endpoints} em \texttt{/api}). O sistema emprega cache em memória para metadados estáticos e gerencia o histórico de sessões em um banco de dados MongoDB, garantindo a persistência do contexto conversacional de forma leve e escalável. A interface web, desenvolvida em React com componentes modernos, oferece chat responsivo com seleção de modo e indicadores de transparência sobre as \textit{tools} utilizadas em cada resposta, consumindo as rotas \textit{serverless} para orquestração do LLM.
+
+\subsection{Granularidade de Tools e Design de Schemas}
+
+A granularidade das tools revelou-se crítica para balancear performance e usabilidade. A hierarquia adotada --- \texttt{get\_section} para perguntas simples, \texttt{get\_medication\_details} para análises comparativas --- permite que o modelo otimize o número de requisições conforme a complexidade da consulta. Os schemas JSON foram projetados com profundidade máxima de dois níveis e descrições detalhadas em cada campo. Schemas excessivamente aninhados ou com descrições vagas resultaram, em experimentos iniciais, em chamadas incorretas ou com parâmetros inválidos, evidenciando que a qualidade do contrato de comunicação exposto pelo servidor MCP impacta diretamente o comportamento do modelo durante a fase de execução.
+
+\subsection{Pipeline de Validação com Juízes Especializados}
+
+O BulaIa implementa um pipeline de validação multi-agente rigoroso~\cite{guo2024multiagent}. Diferentemente de abordagens \textit{in-line} que bloqueiam temporalmente a entrega da mensagem, a arquitetura do BulaIa desacopla a avaliação da geração principal. O modelo de chat devolve a resposta de forma imediata pontuada com uma sub-rota para avaliação (endpoint \texttt{/api/evaluate}), permitindo validação assíncrona orientada a eventos. Quando disparados, os quatro juízes gerais executam paralelamente independentes uns dos outros~\cite{chan2024chateval}. Adicionalmente, caso a categoria detectada demande, o sistema aciona Juízes Específicos de Tópico (como juízes de Posologia ou Contraindicações). O Algoritmo~\ref{alg:judge-pipeline} ilustra como os scores convergem em uma taxonomia de confiabilidade sem incorrer no bloqueio do loop interativo da interface. As subseções a seguir detalham os critérios, faixas de pontuação e dados de saída de cada juiz.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/fig_judges}
+  \caption{Pipeline de validação multi-agente: quatro juízes executam em paralelo e a decisão final considera pesos diferenciados por critério.}
+  \label{fig:judges}
+\end{figure}
+\subsubsection{Juiz de Segurança (\textit{MCPSafetyJudge})}
+
+O Juiz de Segurança é o componente mais crítico do pipeline, responsável por determinar se uma resposta sobre medicamentos é segura para apresentação ao usuário. Sua avaliação abrange cinco critérios: (1)~\textbf{danos físicos} --- se a resposta pode induzir automedicação perigosa ou dosagem incorreta; (2)~\textbf{danos emocionais} --- se a linguagem é alarmista ou pode causar pânico desnecessário; (3)~\textbf{disclaimers} --- se há avisos apropriados sobre consultar profissionais de saúde; (4)~\textbf{emergências} --- se situações que requerem atendimento médico urgente são corretamente identificadas; e (5)~\textbf{contraindicações} --- se contraindicações relevantes são mencionadas quando aplicável.
+
+A pontuação varia de 0 a 100 e é classificada em três faixas: \textit{SAFE} (90--100), indicando resposta totalmente segura com disclaimers apropriados; \textit{WARNING} (70--89), indicando resposta geralmente segura mas que requer cuidados adicionais; e \textit{UNSAFE} (0--69), indicando resposta potencialmente perigosa. Com peso de 40\% na pontuação agregada, este juiz possui uma propriedade exclusiva: a capacidade de rejeitar uma resposta independentemente da pontuação composta dos demais juízes, garantindo que nenhuma resposta com risco grave de segurança seja apresentada ao usuário.
+
+\subsubsection{Juiz de Qualidade (\textit{MCPQualityJudge})}
+
+O Juiz de Qualidade avalia a utilidade e precisão da resposta em cinco dimensões, cada uma pontuada de 0 a 10: \textbf{relevância} (a resposta atende diretamente à pergunta do usuário), \textbf{completude} (informação suficiente para o contexto), \textbf{precisão} (fatos corretos e atualizados), \textbf{grounding} (fundamentação nas fontes fornecidas) e \textbf{clareza} (linguagem acessível ao público-alvo do modo selecionado).
+
+A pontuação de cada juiz é a média aritmética ponderada internamente pelos seus próprios critérios de avaliação, normalizada para uma escala de 0--100, e classificada em quatro faixas: \textit{EXCELLENT} (85--100), \textit{GOOD} (70--84), \textit{ACCEPTABLE} (50--69) e \textit{POOR} (0--49). Um diferencial fundamental da implementação é a interpretabilidade: para cada critério avaliado, o juiz gera uma \textbf{justificativa textual concisa} explicando o motivo da nota atribuída. Além da pontuação e justificativas, o juiz identifica problemas factuais específicos --- afirmações que contradizem ou não são suportadas pelas fontes --- e lista informações ausentes que poderiam ter enriquecido a resposta.
+
+\subsubsection{Juiz de Fonte (\textit{MCPSourceJudge})}
+
+O Juiz de Fonte verifica se cada afirmação factual na resposta pode ser rastreada às fontes oficiais consultadas. Para cada \textit{claim} identificado na resposta, o juiz classifica a qualidade de atribuição em quatro níveis: \textit{EXACT} (citação exata ou muito próxima da fonte), \textit{PARAPHRASED} (paráfrase fiel que mantém o sentido), \textit{INFERRED} (inferência razoável baseada na fonte) e \textit{UNSUPPORTED} (não encontrado nas fontes fornecidas).
+
+A pontuação de atribuição é calculada como a razão entre claims atribuídos e total de claims, multiplicada por 100. Claims não suportados são individualmente classificados por nível de risco (\textit{HIGH}, \textit{MEDIUM}, \textit{LOW}), permitindo que o pipeline priorize a correção de afirmações de alto risco. Com peso de 20\%, este juiz garante que a rastreabilidade --- uma das propriedades centrais da arquitetura MCP --- seja efetivamente materializada nas respostas.
+
+\subsubsection{Juiz de Formato (\textit{MCPFormatJudge})}
+
+O Juiz de Formato avalia aspectos de apresentação e estrutura em quatro dimensões (0--10 cada): \textbf{apropriação} (formatação adequada à complexidade da pergunta), \textbf{estrutura lógica} (organização que facilita a leitura), \textbf{legibilidade} (facilidade de leitura e compreensão) e \textbf{consistência} (estilo uniforme ao longo da resposta). Um aspecto relevante deste juiz é a verificação de proporcionalidade: a formatação deve corresponder à complexidade da pergunta, evitando tanto respostas excessivamente estruturadas para perguntas simples quanto respostas em bloco de texto para perguntas complexas. As faixas de classificação são \textit{OPTIMAL} (85--100), \textit{GOOD} (70--84), \textit{ACCEPTABLE} (50--69) e \textit{POOR} (0--49). Com peso de 10\%, reflete importância secundária em relação a aspectos de conteúdo e segurança.
+
+\subsubsection{Juízes Específicos de Tópico}
+
+Além dos juízes transversais, o sistema emprega \textbf{Juízes de Tópico} acionados condicionalmente com base na intenção detectada (\textit{intent}) da pergunta. O objetivo desses juízes é verificar se a resposta abordou as "perguntas implícitas" que usuários tipicamente têm sobre determinado assunto, atribuindo 20 pontos por critério coberto e penalizando afirmações erradas. Foram implementados juízes para:
+\begin{itemize}
+    \item \textbf{Posologia:} Verifica menção a dose padrão, frequência, duração, como tomar e o que fazer em caso de esquecimento.
+    \item \textbf{Contraindicações:} Exige cobertura sobre grupos contraindicados (gestantes, etc.), condições de saúde, interações graves, álcool e consequências.
+    \item \textbf{Reações Adversas:} Avalia se a resposta lista os efeitos comuns ($>$10\%), efeitos graves, transitoriedade, o que fazer em caso de reação e impactos sobre a atenção (ex. sonolência ao dirigir).
+\end{itemize}
+Se qualquer um dos juízes de tópico aplicáveis retornar uma pontuação insuficiente (abaixo de 50\%) ou identificar um erro crítico de omissão, a resposta falha no \textit{gate} de validação suplementar, gerando uma revisão.
+
+\begin{center}
+\begin{framed}
+\noindent
+\begin{algorithm}[H]
+\caption{Pipeline de Avaliação Desacoplada com Juízes}
+\label{alg:judge-pipeline}
+\KwIn{Resposta gerada $R$, Pergunta original $Q$, Documentos $D$, Modo $M$, Tópicos Detectados $T$}
+\KwOut{Julgamento agregado $J$ guardado via banco de dados}
+\BlankLine
+\textbf{Fase 1 - Execução Paralela (Endpoint /api/evaluate):}\\
+$S_{safety} \gets$ MCPSafetyJudge.evaluate($R$, $Q$, $D$, $M$) \textbf{em paralelo}\\
+$S_{quality} \gets$ MCPQualityJudge.evaluate($R$, $Q$, $D$, $M$) \textbf{em paralelo}\\
+$S_{source} \gets$ MCPSourceJudge.evaluate($R$, $Q$, $D$, $M$) \textbf{em paralelo}\\
+$S_{format} \gets$ MCPFormatJudge.evaluate($R$, $Q$, $D$, $M$) \textbf{em paralelo}\\
+$S_{topics} \gets$ executar\_juizes\_especificos($T$, $R$, $Q$, $D$) \textbf{em paralelo}\\
+\BlankLine
+\textbf{Fase 2 - Agregação e Decisão Final:}\\
+$score\_geral \gets \text{media\_aritmetica}(\{S_{safety}, S_{quality}, S_{source}, S_{format}\})$\\
+\eIf{SafetyJudge.score $<$ 70 \textbf{ou} $S_{topics}$ falhou}{
+    $decisao \gets \text{REJEITADA (Marcação de Risco)}$\\
+}{
+    $decisao \gets \text{APROVADA (Grau: } score\_geral)$\\
+}
+\BlankLine
+\textbf{Fase 3 - Observabilidade:}\\
+Gravar\_Metadados\_DB($Q$, $R$, $decisao$, $S_{topics}$)\\
+\Return $J(decisao, score\_geral)$
+\end{algorithm}
+\end{framed}
+\end{center}
+
+\begin{table}[h]
+\centering
+\caption{Configuração dos Juízes Gerais e Especializados}
+\label{tab:judge-weights}
+\begin{tabular}{|l|p{9cm}|}
+\hline
+\textbf{Juiz} & \textbf{Critérios de Avaliação} \\
+\hline
+Segurança & Riscos de automedicação, avisos obrigatórios, emergências, contraindicações \\
+\hline
+Qualidade & Relevância, completude, acurácia, grounding, clareza \\
+\hline
+Fonte & Atribuição de afirmações, deduções, afirmações não suportadas (alucinações) \\
+\hline
+Formato & Apropriação, estrutura lógica, legibilidade, consistência \\
+\hline
+\textit{P., C., \& R.A.*} & (Juízes de Tópico) Cobertura de perguntas implícitas sobre Posologia, Contraindicações e Reações Adversas. \\
+\hline
+\multicolumn{2}{|c|}{\footnotesize \textit{*} Acionados condicionalmente com base na intenção detectada pelo classificador.} \\
+\hline
+\end{tabular}
+\end{table}
+
+O Algoritmo~\ref{alg:judge-pipeline} evidencia uma decisão central de projeto: o Juiz de Segurança possui poder de veto, podendo rejeitar uma resposta independentemente da pontuação média agregada dos demais juízes gerais. O mesmo princípio aplica-se aos juízes de tópico, que funcionam como \textit{gates} de validação suplementares. Essa assimetria reflete os riscos do domínio farmacêutico --- uma resposta bem formatada e corretamente atribuída que omite uma contraindicação crítica representa um risco inaceitável. O pipeline produz categorias de decisão como: \textbf{APROVADA} (média $\geq$ 80, sem rejeições de segurança ou tópico) e \textbf{REJEITADA} (falha no juiz de segurança ou nos juízes de tópico aplicáveis, sobrepondo qualquer pontuação média).
+
+\FloatBarrier
+
+% =============================================================
+% SEÇÃO 7 — DISCUSSÃO (original, sem alterações)
+% =============================================================
+
+\section{Discussão}
+\label{sec:discussao}
+
+Esta seção discute os resultados da implementação do BulaIa à luz das propriedades do protocolo MCP, identificando benefícios verificados, limitações inerentes e implicações para sistemas de saúde.
+
+\subsection{Benefícios da Abordagem}
+
+A integração via protocolo MCP traz dois benefícios diretos independentes do domínio: \textbf{padronização de integração}, que permite que o servidor ANVISA desenvolvido neste trabalho seja reutilizado por qualquer cliente MCP-compatível sem modificação; e \textbf{rastreabilidade completa}, pois cada invocação de tool é registrada com fonte, parâmetros e resultado, permitindo auditar cada afirmação da resposta até seu dado de origem --- aspecto essencial em domínios regulados.
+
+Os demais benefícios observados derivam da escolha de acesso direto à API ANVISA, independente do protocolo: a \textbf{atualização em tempo real} --- dados de recalls e atualizações de bulas são imediatamente acessíveis --- é consequência de a API ANVISA ser uma fonte ao vivo. A \textbf{ausência de pipeline de embeddings e banco vetorial} é consequência da natureza estruturada da API, não uma propriedade do protocolo MCP, que é agnóstico à estratégia de recuperação interna ao servidor.
+
+\subsection{Complexidade como Trade-off}
+
+Ao contrário do que poderia sugerir uma leitura superficial, o protocolo MCP \emph{não} simplifica a infraestrutura de integração em termos absolutos. A implementação de um servidor MCP envolve um processo dedicado, gestão de conexões persistentes, serialização JSON-RPC e, em cenários remotos, camadas adicionais de autenticação e autorização~\cite{xenoss2025mcp}. Comparado ao acesso direto a uma REST API, o protocolo introduz overhead de comunicação e custo de manutenção adicional~\cite{marktechpost2025mcp}. A vantagem do MCP sobre alternativas mais simples reside em sua \emph{escalabilidade de integração}: o investimento inicial em um servidor bem projetado é amortizado à medida que novos clientes o adotam sem custo adicional.
+
+\subsection{Limitações}
+
+A \textbf{latência} tende a ser maior que em sistemas com dados pré-indexados, especialmente para consultas que requerem múltiplas invocações de tools em sequência. A \textbf{dependência externa} da API ANVISA introduz ponto único de falha; estratégias de degradação graciosa, como fallback para cache local, são recomendadas para ambientes de produção. A \textbf{maturidade do ecossistema} ainda representa desafio: o protocolo é recente, e questões como autenticação remota, segurança contra \emph{tool poisoning} e suporte a transporte sem estado em deployments serverless ainda estão sendo endereçadas nas sucessivas revisões da especificação~\cite{hou2025mcp,xenoss2025mcp}. A \textbf{validação empírica} do sistema foi realizada por testes funcionais e análise qualitativa, sem estudos formais com usuários em contextos clínicos.
+
+\subsection{Quando o Protocolo MCP é Preferível}
+
+O protocolo MCP é preferível em cenários onde múltiplas aplicações precisam compartilhar acesso a fontes de dados externas, onde rastreabilidade completa é requisito regulatório, e onde a expectativa de crescimento do ecossistema de clientes justifica o investimento em padronização~\cite{databricks2025mcp}. Para integrações únicas de baixa complexidade, ou quando latência sub-segundo é requisito rígido, a chamada direta a APIs pode oferecer melhor custo-benefício. O protocolo também não é a escolha preferível quando o corpus é estático e de grande volume --- nesses casos, RAG pré-indexado oferece melhor desempenho de recuperação~\cite{izacard2021leveraging}.
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{Ranqueamento_Multi_Agente_de_Documentos_para_Recuperação_de_Informação/Template_SBC/template-latex/images/fig_tradeoff.png}
+  \caption{Comparação multidimensional entre MCP, Function Calling e REST Direto nas principais dimensões de integração de LLMs com fontes externas.}
+  \label{fig:tradeoff}
+\end{figure}
+\subsection{Implicações para Sistemas de Saúde}
+
+A abordagem demonstrada tem implicações mais amplas para sistemas de informação em saúde. Servidores MCP compatíveis com FHIR poderiam expor prontuários eletrônicos de forma padronizada para múltiplas aplicações de suporte a decisão clínica~\cite{singhal2023medpalm}. A padronização do protocolo poderia reduzir a fragmentação que caracteriza sistemas de informação em saúde~\cite{kommineni2024kg}, permitindo que aplicações de diferentes fornecedores se conectem a servidores compartilhados. Para sistemas que acessem dados sensíveis de pacientes, o servidor MCP deve incorporar autenticação por tokens, autorização por papel profissional, criptografia em trânsito e logging de auditoria conforme a LGPD.
+
+% =============================================================
+% SEÇÃO 8 — CONCLUSÃO (original, sem alterações)
+% =============================================================
+
+\section{Conclusão}
+\label{sec:conclusao}
+
+Esta seção consolida as contribuições do trabalho, aponta extensões funcionais e de validação prioritárias, e posiciona o BulaIa no contexto mais amplo de sistemas de IA integrados a fontes de dados externas.
+
+\subsection{Contribuições}
+
+Este trabalho apresentou o BulaIa e demonstrou a aplicabilidade do protocolo MCP ao domínio farmacêutico brasileiro. As principais contribuições são: (i) a \textbf{implementação documentada de servidor MCP} para a API ANVISA, estabelecendo padrão reutilizável com código-fonte aberto; (ii) a \textbf{demonstração prática} de como o protocolo MCP viabiliza acesso em tempo real a dados estruturados sem exigir indexação vetorial neste contexto específico; (iii) a \textbf{diferenciação adaptativa} por perfil de usuário via prompts MCP, abordagem generalizável para outros domínios onde diferentes níveis de expertise requerem apresentações distintas; e (iv) o \textbf{pipeline de validação multi-agente} com juízes especializados, que garante segurança e qualidade das respostas num domínio de alto risco.
+
+\subsection{Trabalhos Futuros}
+
+Extensões funcionais prioritárias incluem verificação avançada de interações medicamentosas via tool MCP dedicada, integração multimodal para análise de imagens de embalagens, e arquitetura multi-servidor integrando fontes como PubMed e protocolos clínicos do Ministério da Saúde. Do ponto de vista de validação, estudos de usabilidade com pacientes e profissionais de saúde em contextos clínicos, e benchmark formal comparando o acesso direto via protocolo MCP com RAG tradicional em métricas de latência, acurácia e custo operacional, forneceriam evidências quantitativas dos trade-offs identificados. Adicionalmente, a incorporação de mecanismos de segurança contra \emph{tool poisoning} e de autorização baseada em papel profissional representa pré-requisito para uso em ambientes clínicos reais.
+
+\subsection{Considerações Finais}
+
+O BulaIa demonstra que o protocolo MCP, como padrão de integração aberto, viabiliza sistemas especializados com acesso padronizado e rastreável a dados externos dinâmicos. Cabe enfatizar que a ausência de RAG nesta implementação é uma decisão específica do contexto --- motivada pelas características da API ANVISA --- e não uma propriedade do protocolo, que pode encapsular pipelines completos de recuperação semântica. Para o contexto brasileiro, este trabalho estabelece precedente para aplicação de tecnologias emergentes de IA respeitando particularidades regulatórias locais e integrando com infraestrutura pública existente. O momento de adoção inicial do protocolo MCP, transferido à Agentic AI Foundation sob a Linux Foundation em dezembro de 2025~\cite{wikipedia2025mcp}, representa oportunidade para que a comunidade brasileira contribua ativamente para a formação desse ecossistema.
+
+\section*{Disponibilidade}
+
+O código-fonte completo do BulaIa, incluindo servidor MCP, API REST e interface web, está disponível em repositório público para replicação e extensão pela comunidade científica.
+
+\section*{Agradecimentos}
+
+Os autores agradecem à ANVISA pela disponibilização de dados públicos por meio de sua API oficial. À Anthropic pelo desenvolvimento do protocolo MCP e sua biblioteca de referência em Python. Ao Departamento de Computação da UFPI pelo suporte à pesquisa e infraestrutura necessária.
+
+% =============================================================
+% REFERÊNCIAS BIBLIOGRÁFICAS
+% Inclui todas as referências originais + novas referências
+% adicionadas pela seção de Fundamentos Teóricos revisada.
+% =============================================================
+
+\begin{thebibliography}{99}
+
+\bibitem{anthropic2024mcp}
+Anthropic (2024). Introducing the Model Context Protocol. Disponível em: \url{https://www.anthropic.com/news/model-context-protocol}
+
+\bibitem{anvisa2024}
+ANVISA - Agência Nacional de Vigilância Sanitária (2024). Bulário Eletrônico. Disponível em: \url{https://consultas.anvisa.gov.br/}
+
+\bibitem{ibm2025mcp}
+IBM (2025). What is Model Context Protocol (MCP)? Disponível em: \url{https://www.ibm.com/think/topics/model-context-protocol}
+
+\bibitem{databricks2025mcp}
+Databricks (2025). What Is the Model Context Protocol (MCP)? A Practical Guide to AI Integration. Disponível em: \url{https://www.databricks.com/glossary/model-context-protocol}
+
+\bibitem{wikipedia2025mcp}
+Wikipedia (2025). Model Context Protocol. Disponível em: \url{https://en.wikipedia.org/wiki/Model_Context_Protocol}
+
+\bibitem{xenoss2025mcp}
+Xenoss (2025). MCP in enterprise: real-world applications and challenges. Disponível em: \url{https://xenoss.io/blog/mcp-model-context-protocol-enterprise-use-cases-implementation-challenges}
+
+\bibitem{marktechpost2025mcp}
+MarkTechPost (2025). Model Context Protocol (MCP) vs Function Calling: A Deep Dive into AI Integration Architectures. Disponível em: \url{https://www.marktechpost.com/2025/04/18/model-context-protocol-mcp-vs-function-calling-a-deep-dive-into-ai-integration-architectures/}
+
+\bibitem{mcp2025tools}
+Model Context Protocol (2025). Tools Specification. Disponível em: \url{https://modelcontextprotocol.io/specification/2025-11-25/server/tools}
+
+\bibitem{workos2025mcp}
+WorkOS (2025). What is the Model Context Protocol (MCP)? Disponível em: \url{https://workos.com/blog/model-context-protocol}
+
+\bibitem{getknit2025mcp}
+Knit (2025). MCP Resources, Tools and Prompts Explained. Disponível em: \url{https://www.getknit.dev/blog/mcp-resources-tools-and-prompts}
+
+\bibitem{kubaski2025mcp}
+Kubaski, J. (2025). Understanding MCP: Resources, Tools and Prompts. Disponível em: \url{https://medium.com/@kubaski/understanding-mcp}
+
+\bibitem{dailydoseofds2025mcp}
+Daily Dose of Data Science (2025). MCP Architecture Deep Dive. Disponível em: \url{https://www.dailydoseofds.com/mcp-architecture}
+
+\bibitem{kubiya2025mcp}
+Kubiya (2025). Model Context Protocol: A Complete Guide. Disponível em: \url{https://www.kubiya.ai/resource-post/model-context-protocol-complete-guide}
+
+\bibitem{philschmid2025mcp}
+Schmid, P. (2025). MCP: Model Context Protocol Explained. Disponível em: \url{https://www.philschmid.de/mcp-introduction}
+
+\bibitem{brown2020gpt3}
+Brown, T. B. et al. (2020). Language Models are Few-Shot Learners. In \textit{Advances in Neural Information Processing Systems}, vol. 33, pp. 1877-1901.
+
+\bibitem{lewis2020rag}
+Lewis, P. et al. (2020). Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks. In \textit{Advances in Neural Information Processing Systems}, vol. 33, pp. 9459-9474.
+
+\bibitem{chase2022langchain}
+Chase, H. (2022). LangChain: Building applications with LLMs through composability. GitHub repository.
+
+\bibitem{gao2023rag}
+Gao, Y. et al. (2023). Retrieval-Augmented Generation for Large Language Models: A Survey. \textit{arXiv preprint arXiv:2312.10997}.
+
+\bibitem{singhal2023medpalm}
+Singhal, K. et al. (2023). Large Language Models Encode Clinical Knowledge. \textit{Nature}, vol. 620, pp. 172-180.
+
+\bibitem{thirunavukarasu2023llm}
+Thirunavukarasu, A. J. et al. (2023). Large Language Models in Medicine. \textit{Nature Medicine}, vol. 29, pp. 1930-1940.
+
+\bibitem{openai2023function}
+OpenAI (2023). Function Calling and Other API Updates. OpenAI Blog.
+
+\bibitem{schick2023toolformer}
+Schick, T. et al. (2023). Toolformer: Language Models Can Teach Themselves to Use Tools. \textit{arXiv preprint arXiv:2302.04761}.
+
+\bibitem{izacard2021leveraging}
+Izacard, G. and Grave, E. (2021). Leveraging Passage Retrieval with Generative Models for Open Domain Question Answering. In \textit{Proceedings of EACL}, pp. 874-880.
+
+\bibitem{borgeaud2022improving}
+Borgeaud, S. et al. (2022). Improving Language Models by Retrieving from Trillions of Tokens. In \textit{Proceedings of ICML}, pp. 2206-2240.
+
+\bibitem{karpukhin2020dpr}
+Karpukhin, V. et al. (2020). Dense Passage Retrieval for Open-Domain Question Answering. In \textit{Proceedings of EMNLP}, pp. 6769-6781.
+
+\bibitem{reimers2019sentence}
+Reimers, N. and Gurevych, I. (2019). Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks. In \textit{Proceedings of EMNLP-IJCNLP}, pp. 3982-3992.
+
+\bibitem{hou2025mcp}
+Hou, X. et al. (2025). Model Context Protocol (MCP): Landscape, Security Threats, and Future Research Directions. \textit{arXiv preprint arXiv:2503.23278}.
+
+\bibitem{chan2024chateval}
+Chan, C. et al. (2024). ChatEval: Towards Better LLM-based Evaluators through Multi-Agent Debate. In \textit{Proceedings of ICLR 2024}.
+
+\bibitem{guo2024multiagent}
+Guo, T., Chen, X., Wang, Y. et al. (2024). Large Language Model based Multi-Agents: A Survey of Progress and Challenges. \textit{arXiv preprint arXiv:2402.01680}.
+
+\bibitem{qin2024toolllm}
+Qin, Y. et al. (2024). ToolLLM: Facilitating Large Language Models to Master 16000+ Real-world APIs. In \textit{Proceedings of ICLR 2024}.
+
+\bibitem{patil2023gorilla}
+Patil, S. G. et al. (2023). Gorilla: Large Language Model Connected with Massive APIs. \textit{arXiv preprint arXiv:2305.15334}.
+
+\bibitem{li2024drug}
+Li, J. et al. (2024). Large Language Models as Drug Information Providers for Patients. In \textit{Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics}, pp. 1-12.
+
+\bibitem{ong2024cdss}
+Ong, J. et al. (2024). Large Language Models as Clinical Decision Support Systems to Enhance Medication Safety. \textit{Journal of Medical Internet Research}, vol. 26, e52563.
+
+\bibitem{kommineni2024kg}
+Kommineni, V. K. et al. (2024). From human experts to machines: An LLM supported approach to ontology and knowledge graph construction. \textit{npj Digital Medicine}, vol. 7, 228.
+
+\end{thebibliography}
+
+\end{document}

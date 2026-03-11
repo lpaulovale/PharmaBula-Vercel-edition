@@ -1,5 +1,5 @@
 /**
- * PharmaBula Chat API — Planner-Based Architecture
+ * BulaIA Chat API — Planner-Based Architecture
  *
  * Simplified orchestrator using LLM planner:
  *   1. planner       → Analyzes question, returns JSON execution plan
@@ -71,8 +71,24 @@ module.exports = async function handler(req, res) {
           clarificationNeeded: true,
           availableTools: listTools().map(t => t.name),
           evaluateUrl: "/api/evaluate",
+          plan: plan,
         },
       });
+    }
+
+    // =========================================
+    // Step 2b: Fetch history if planner detected need
+    // =========================================
+    if (plan.needs_history && sessions && sessionId) {
+      try {
+        const session = await sessions.findOne({ sessionId });
+        if (session && session.messages) {
+          historyMessages = session.messages.slice(-MAX_HISTORY_MESSAGES);
+          console.log(`[Chat] Fetched ${historyMessages.length} history messages (needs_history=true)`);
+        }
+      } catch (dbErr) {
+        console.warn("[Chat] History fetch failed:", dbErr.message);
+      }
     }
 
     // =========================================
@@ -112,6 +128,8 @@ module.exports = async function handler(req, res) {
       date: new Date().toISOString().split("T")[0],
       question: message,
       documents: context || getNoDataPrompt(),
+      topics: plan.topics || [],
+      implicitQuestions: plan.implicit_questions || [],
     });
 
     const messages = [{ role: "system", content: systemPrompt }];
@@ -191,8 +209,30 @@ module.exports = async function handler(req, res) {
             $push: {
               messages: {
                 $each: [
-                  { role: "user", text: message, timestamp: new Date() },
-                  { role: "model", text: responseText, timestamp: new Date() },
+                  {
+                    role: "user",
+                    text: message,
+                    timestamp: new Date(),
+                    // Store classification context for the question
+                    topics: plan.topics || [],
+                    implicit_questions: plan.implicit_questions || [],
+                    classification_confidence: plan.classification_confidence,
+                    classification_method: plan.classification_method,
+                  },
+                  {
+                    role: "model",
+                    text: responseText,
+                    timestamp: new Date(),
+                    // Store what was used to generate the response
+                    topics_covered: plan.topics || [],
+                    implicit_questions_checklist: plan.implicit_questions || [],
+                    tools_executed: toolLog,
+                    drugs_detected: plan.drugs || [],
+                    model: llmResult?.config || null,
+                    needs_history: plan.needs_history || false,
+                    // Store retrieved documents (truncated for space)
+                    documents_context: context ? context.substring(0, 5000) : null,
+                  },
                 ],
               },
             },

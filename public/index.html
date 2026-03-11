@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PharmaBula</title>
+    <title>BulaIA</title>
 
     <!-- Favicon: scroll + cross SVG -->
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230ea57a'/%3E%3Cpath d='M9 10h14M9 14h10M9 18h12M9 22h8' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
@@ -533,7 +533,7 @@
                 <div class="logo-icon">
                     <i data-lucide="scroll-text"></i>
                 </div>
-                <span class="logo-name">PharmaBula</span>
+                <span class="logo-name">BulaIA</span>
             </div>
             <button class="icon-btn-sq" id="sidebar-toggle" title="Recolher">
                 <i data-lucide="chevron-left"></i>
@@ -646,8 +646,8 @@
 
     const API_BASE = '/api';
     let currentMode = 'patient', hasMessages = false;
-    let sessionId = sessionStorage.getItem('pharmabula_session');
-    if (!sessionId) { sessionId = 'sess_' + crypto.randomUUID(); sessionStorage.setItem('pharmabula_session', sessionId); }
+    let sessionId = sessionStorage.getItem('bulaia_session');
+    if (!sessionId) { sessionId = 'sess_' + crypto.randomUUID(); sessionStorage.setItem('bulaia_session', sessionId); }
 
     // Theme
     const themeToggle = document.getElementById('theme-toggle');
@@ -731,7 +731,7 @@
                     <i data-lucide="scroll-text"></i>
                 </div>
                 <div class="msg-body">
-                    <div class="msg-name">PharmaBula</div>
+                    <div class="msg-name">BulaIA</div>
                     <div class="msg-text">${richHtml||escapeHtml(text)}</div>
                 </div>`;
         }
@@ -749,7 +749,7 @@
         el.innerHTML=`
             <div class="msg-avatar"><i data-lucide="scroll-text"></i></div>
             <div class="msg-body">
-                <div class="msg-name">PharmaBula</div>
+                <div class="msg-name">BulaIA</div>
                 <div class="msg-text"><div class="loading"><div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div></div>
             </div>`;
         msgsCont.appendChild(el);

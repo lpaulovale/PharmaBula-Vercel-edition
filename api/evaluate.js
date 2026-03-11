@@ -1,15 +1,17 @@
 /**
- * PharmaBula Evaluation API
- * 
- * Runs the 4-judge evaluation pipeline on a given response.
+ * BulaIA Evaluation API
+ *
+ * Runs the two-tier judge evaluation pipeline on a given response.
  * POST /api/evaluate with:
- *   { question, response, documents, mode, judges?, sessionId? }
- * 
- * Returns aggregated scores from all judges and saves to MongoDB.
+ *   { question, response, documents, mode, topics?, sessionId? }
+ *
+ * Returns aggregated scores from general judges + topic coverage scores.
+ * Topic judges run conditionally based on detected topics.
  */
 
 const { runAllJudges, runJudge, listJudges } = require("../lib/judges");
 const { getEvaluationsCollection } = require("../lib/db");
+const { classifyQuestion, getImplicitQuestions } = require("../lib/question_classifier");
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -22,7 +24,7 @@ module.exports = async function handler(req, res) {
   if (req.method === "GET") {
     return res.status(200).json({
       judges: listJudges(),
-      description: "POST with { question, response, documents, mode } to run evaluation",
+      description: "POST with { question, response, documents, mode, topics? } to run evaluation",
     });
   }
 
@@ -30,17 +32,32 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ detail: "Método não permitido." });
   }
 
-  const { question, response, documents, mode, judges, sessionId } = req.body || {};
+  const { question, response, documents, mode, judges, sessionId, topics: providedTopics } = req.body || {};
 
   if (!response) {
     return res.status(400).json({ detail: "Campo 'response' é obrigatório." });
   }
+
+  // Classify question if topics not provided
+  let topics = providedTopics || [];
+  let classificationMethod = "provided";
+
+  if (topics.length === 0 && question) {
+    const classification = await classifyQuestion(question);
+    topics = classification.topics;
+    classificationMethod = classification.method;
+    console.log(`[EVALUATE] Classified question into topics: ${topics.join(", ")} (method: ${classificationMethod})`);
+  }
+
+  const implicitQuestions = getImplicitQuestions(topics);
 
   const context = {
     question: question || "",
     response,
     documents: documents || "",
     mode: mode || "patient",
+    topics,
+    implicit_questions: implicitQuestions,
   };
 
   try {
@@ -81,9 +98,27 @@ module.exports = async function handler(req, res) {
           response,
           mode: mode || "patient",
           documents: documents ? documents.substring(0, 2000) : null, // Truncate to save space
-          results: results.judges,
-          aggregate_score: results.aggregate_score,
-          judges_run: results.judges_run,
+          
+          // Topic classification
+          topics_detected: topics,
+          classification_method: classificationMethod,
+          implicit_questions: implicitQuestions,
+          
+          // General judges results
+          general_judges: results.general_judges || results.judges,
+          general_score: results.general_score || results.aggregate_score,
+          
+          // Topic judges results (observability)
+          topic_judges: results.topic_judges || {},
+          topic_coverage_score: results.topic_coverage_score || null,
+          
+          // Gate results
+          topic_gates_passed: results.topic_gates_passed !== undefined ? results.topic_gates_passed : null,
+          safety_gate_passed: results.safety_gate_passed !== undefined ? results.safety_gate_passed : null,
+          rejected: results.rejected !== undefined ? results.rejected : false,
+          
+          // Metadata
+          judges_run: results.judges_run || 0,
           timestamp: new Date(),
         });
         console.log("[EVALUATE] Results saved to MongoDB.");

@@ -1,5 +1,5 @@
 /**
- * PharmaBula MCP Server
+ * BulaIA MCP Server
  *
  * Wraps existing internal logic (tool_registry, resource_manager, prompt_manager)
  * into a proper MCP server using @modelcontextprotocol/sdk with JSON-RPC 2.0 transport.
@@ -36,7 +36,7 @@ const ENABLE_HTTP = process.argv.includes("--http") || process.env.MCP_HTTP === 
 // ============================================================
 const server = new McpServer(
   {
-    name: "pharmabula",
+    name: "bula-ia",
     version: "1.0.0",
   },
   {
@@ -248,14 +248,14 @@ async function startServer() {
     });
 
     app.listen(HTTP_PORT, () => {
-      console.error(`PharmaBula MCP Server running on HTTP port ${HTTP_PORT}`);
+      console.error(`BulaIA MCP Server running on HTTP port ${HTTP_PORT}`);
       console.error(`SSE endpoint: http://localhost:${HTTP_PORT}/mcp`);
     });
   } else {
     // Stdio Transport (default)
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("PharmaBula MCP Server running on stdio");
+    console.error("BulaIA MCP Server running on stdio");
     console.error("Available capabilities: tools, resources, prompts");
   }
 }
