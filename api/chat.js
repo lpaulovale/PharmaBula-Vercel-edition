@@ -189,14 +189,22 @@ module.exports = async function handler(req, res) {
         const name = `Bula ${r.data.name} - ANVISA`;
         if (!seenNames.has(name)) {
           seenNames.add(name);
-          sources.push(name);
+          sources.push({
+            name: r.data.name,
+            displayName: name,
+            pdfUrl: r.data.pdfUrl || null
+          });
         }
       }
       if (r.tool === "get_section" && r.found && r.data) {
         const name = `Bula ${r.data.name} - ANVISA (${r.data.section})`;
         if (!seenNames.has(name)) {
           seenNames.add(name);
-          sources.push(name);
+          sources.push({
+            name: r.data.name,
+            displayName: name,
+            pdfUrl: r.data.pdfUrl || null
+          });
         }
       }
       if (r.tool === "find_generic_versions" && r.versionsFound > 0) {
@@ -204,7 +212,11 @@ module.exports = async function handler(req, res) {
           const name = `${v.name} (${v.company})`;
           if (!seenNames.has(name)) {
             seenNames.add(name);
-            sources.push(name);
+            sources.push({
+              name: v.name,
+              displayName: name,
+              pdfUrl: v.pdfUrl || null
+            });
           }
         }
       }

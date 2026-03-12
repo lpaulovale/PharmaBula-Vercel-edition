@@ -549,6 +549,88 @@
             opacity: 0.8;
         }
 
+        /* PDF Viewer Modal */
+        .pdf-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 1000;
+            animation: fadeIn 0.2s ease;
+        }
+        .pdf-modal-overlay.active {
+            display: flex;
+            flex-direction: column;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .pdf-modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 24px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+        }
+        .pdf-modal-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+        }
+        .pdf-modal-close {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            border: none;
+            background: var(--bg3);
+            color: var(--text);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s;
+        }
+        .pdf-modal-close:hover {
+            background: var(--surface2);
+        }
+        .pdf-modal-content {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .pdf-modal-content iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 12px;
+            background: white;
+        }
+        .pdf-download-btn {
+            padding: 8px 16px;
+            background: var(--accent);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: 12px;
+            transition: background 0.15s;
+        }
+        .pdf-download-btn:hover {
+            background: var(--accent-hover);
+        }
+
         /* ── Scrollbar ── */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -681,6 +763,25 @@
     </main>
 </div>
 
+<!-- PDF Viewer Modal -->
+<div class="pdf-modal-overlay" id="pdf-modal">
+    <div class="pdf-modal-header">
+        <div style="display:flex;align-items:center;gap:12px;">
+            <span class="pdf-modal-title" id="pdf-title">Bula - ANVISA</span>
+            <a id="pdf-download-link" href="#" target="_blank" rel="noopener" class="pdf-download-btn" title="Baixar PDF">
+                <i data-lucide="download" style="width:16px;height:16px;"></i>
+                Baixar PDF
+            </a>
+        </div>
+        <button class="pdf-modal-close" onclick="closePdfViewer()" title="Fechar">
+            <i data-lucide="x" style="width:18px;height:18px;"></i>
+        </button>
+    </div>
+    <div class="pdf-modal-content">
+        <iframe id="pdf-viewer" src="" title="Visualizador de PDF"></iframe>
+    </div>
+</div>
+
 <script>
     // Init Lucide icons
     lucide.createIcons();
@@ -711,6 +812,43 @@
             localStorage.setItem('theme','light');
         }
         lucide.createIcons();
+    });
+
+    // PDF Viewer Functions
+    function openPdfViewer(pdfUrl, drugName) {
+        const modal = document.getElementById('pdf-modal');
+        const viewer = document.getElementById('pdf-viewer');
+        const title = document.getElementById('pdf-title');
+        const downloadLink = document.getElementById('pdf-download-link');
+        
+        viewer.src = pdfUrl;
+        title.textContent = `Bula: ${drugName}`;
+        downloadLink.href = pdfUrl;
+        
+        modal.classList.add('active');
+        lucide.createIcons();
+    }
+    
+    function closePdfViewer() {
+        const modal = document.getElementById('pdf-modal');
+        const viewer = document.getElementById('pdf-viewer');
+        
+        viewer.src = '';
+        modal.classList.remove('active');
+    }
+    
+    // Close modal on Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closePdfViewer();
+        }
+    });
+    
+    // Close modal on overlay click
+    document.getElementById('pdf-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'pdf-modal') {
+            closePdfViewer();
+        }
     });
 
     const welcome = document.getElementById('welcome');
