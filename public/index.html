@@ -1033,15 +1033,7 @@
                         onmouseover="this.style.background='rgba(14,165,122,0.2)';this.style.transform='translateY(-1px)'"
                         onmouseout="this.style.background='rgba(14,165,122,0.1)';this.style.transform='translateY(0)'"
                         title="Ver bula de ${drug} na ANVISA">
-                        <span style="font-size:16px;">🔍</span>
-                        ${drug}
-                    </a>`;
-                });
-                
-                richHtml += '</div></div>';
-            }
-                        title="Abrir bula de ${drug} na ANVISA">
-                        <span style="font-size:16px;">📄</span>
+                        <span class="ico" data-lucide="search" style="width:16px;height:16px;"></span>
                         ${drug}
                     </a>`;
                 });
@@ -1050,6 +1042,9 @@
             }
             richHtml += '<div class="disclaimer-text">⚠️ Informações baseadas em bulas oficiais ANVISA. Sempre consulte um profissional de saúde.</div>';
             addMessage(responseText,'assistant',richHtml);
+            
+            // Re-initialize Lucide icons for dynamically added content
+            lucide.createIcons();
 
             if (window.renderMathInElement) {
                 const last = msgsCont.lastElementChild;
