@@ -1011,45 +1011,27 @@
                 </div>` + richHtml;
             }
             
-            if (data.sources && data.sources.length > 0) {
+            // Only show sources if we have PDF URLs (from ANVISA)
+            const pdfSources = data.sources?.filter(s => s.pdfUrl) || [];
+            
+            if (pdfSources.length > 0) {
                 richHtml += '<div style="margin-top:12px;padding:10px 13px;background:var(--accent-soft);border-radius:12px;border:1px solid var(--accent-mid);font-size:13px;">';
-                richHtml += '<div style="margin-bottom:8px;"><strong style="color:var(--accent);">📋 Fontes</strong></div>';
+                richHtml += '<div style="margin-bottom:8px;"><strong style="color:var(--accent);">📋 Bula Oficial</strong></div>';
                 richHtml += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
                 
-                data.sources.forEach((src) => {
-                    const drugName = src.name || src;
-                    const pdfUrl = src.pdfUrl;
-                    
-                    if (pdfUrl) {
-                        // Has PDF URL - open viewer modal
-                        richHtml += `<div onclick="openPdfViewer('${pdfUrl}', '${drugName}')"
-                            style="display:inline-flex;align-items:center;gap:6px;
-                            padding:6px 14px;background:rgba(14,165,122,0.1);
-                            border:1px solid rgba(14,165,122,0.3);border-radius:20px;
-                            color:var(--accent);font-size:13px;font-weight:500;
-                            cursor:pointer;transition:all 0.2s;"
-                            onmouseover="this.style.background='rgba(14,165,122,0.2)';this.style.transform='translateY(-1px)'"
-                            onmouseout="this.style.background='rgba(14,165,122,0.1)';this.style.transform='translateY(0)'"
-                            title="Ver bula de ${drugName}">
-                            <span class="ico" data-lucide="file-text" style="width:16px;height:16px;"></span>
-                            ${drugName}
-                        </div>`;
-                    } else {
-                        // No PDF URL - link to ANVISA search
-                        const anvisaUrl = `https://consultas.anvisa.gov.br/#/bulario/q/?nomeProduto=${encodeURIComponent(drugName)}`;
-                        richHtml += `<a href="${anvisaUrl}" target="_blank" rel="noopener"
-                            style="display:inline-flex;align-items:center;gap:6px;
-                            padding:6px 14px;background:rgba(14,165,122,0.1);
-                            border:1px solid rgba(14,165,122,0.3);border-radius:20px;
-                            color:var(--accent);font-size:13px;font-weight:500;
-                            cursor:pointer;transition:all 0.2s;text-decoration:none;"
-                            onmouseover="this.style.background='rgba(14,165,122,0.2)';this.style.transform='translateY(-1px)'"
-                            onmouseout="this.style.background='rgba(14,165,122,0.1)';this.style.transform='translateY(0)'"
-                            title="Buscar ${drugName} na ANVISA">
-                            <span class="ico" data-lucide="search" style="width:16px;height:16px;"></span>
-                            ${drugName}
-                        </a>`;
-                    }
+                pdfSources.forEach((src) => {
+                    richHtml += `<div onclick="openPdfViewer('${src.pdfUrl}', '${src.name}')"
+                        style="display:inline-flex;align-items:center;gap:6px;
+                        padding:6px 14px;background:rgba(14,165,122,0.1);
+                        border:1px solid rgba(14,165,122,0.3);border-radius:20px;
+                        color:var(--accent);font-size:13px;font-weight:500;
+                        cursor:pointer;transition:all 0.2s;"
+                        onmouseover="this.style.background='rgba(14,165,122,0.2)';this.style.transform='translateY(-1px)'"
+                        onmouseout="this.style.background='rgba(14,165,122,0.1)';this.style.transform='translateY(0)'"
+                        title="Ver bula oficial de ${src.name}">
+                        <span class="ico" data-lucide="file-text" style="width:16px;height:16px;"></span>
+                        ${src.name}
+                    </div>`;
                 });
                 
                 richHtml += '</div></div>';
