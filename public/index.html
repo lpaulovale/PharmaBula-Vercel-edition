@@ -1065,6 +1065,13 @@
                 if (last) renderMathInElement(last, { delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}], throwOnError:false });
             }
 
+            // Auto-open PDF viewer if we have PDF URL from ANVISA
+            if (data.metadata?.pdfUrl) {
+                setTimeout(() => {
+                    openPdfViewer(data.metadata.pdfUrl, data.metadata.drugName || 'Bula');
+                }, 800);
+            }
+
             // Judge eval
             const lastEl = msgsCont.lastElementChild;
             if (lastEl) {
