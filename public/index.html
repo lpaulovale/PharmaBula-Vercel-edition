@@ -999,19 +999,25 @@
                     ${breakdownStr ? `<div class="judgment-details">📊 ${breakdownStr}</div>` : ''}
                 </div>` + richHtml;
             }
-            
-            // Show sources with PDF link
+
+            // Show sources with PDF link or ANVISA search
             const sources = data.sources || [];
+            
+            // Debug: Log sources to console
+            console.log('[DEBUG] Sources received:', sources);
+            console.log('[DEBUG] Metadata pdfUrl:', data.metadata?.pdfUrl);
             
             if (sources.length > 0) {
                 richHtml += '<div style="margin-top:12px;padding:10px 13px;background:var(--accent-soft);border-radius:12px;border:1px solid var(--accent-mid);font-size:13px;">';
                 richHtml += '<div style="margin-bottom:8px;"><strong style="color:var(--accent);">📋 Bula Oficial</strong></div>';
                 richHtml += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
-                
+
                 sources.forEach((src) => {
                     const drugName = typeof src === 'string' ? src : (src.name || src.displayName);
                     const pdfUrl = typeof src === 'object' ? src.pdfUrl : null;
                     
+                    console.log('[DEBUG] Source:', { drugName, pdfUrl, type: typeof src, raw: src });
+
                     if (pdfUrl) {
                         // Has PDF URL - make it a clickable link
                         richHtml += `<a href="${pdfUrl}" target="_blank" rel="noopener"
