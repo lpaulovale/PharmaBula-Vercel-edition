@@ -147,6 +147,8 @@ module.exports = async function handler(req, res) {
     // Step 5: Call LLM for response
     // =========================================
     let llmResult;
+    let llmError = null;
+    
     try {
       if (runtimeModel) {
         let modelOptions = {};
@@ -157,11 +159,21 @@ module.exports = async function handler(req, res) {
         }
         llmResult = await chatWithModel(messages, modelOptions);
       } else {
+        // chat() has built-in fallback chain (primary -> fallback)
         llmResult = await chat(messages, { temperature: 0.3, maxTokens: 1024 });
       }
     } catch (llmErr) {
       console.error("LLM call failed:", llmErr.message);
-      return res.status(502).json({ detail: `Erro na API do LLM: ${llmErr.message}` });
+      llmError = llmErr;
+    }
+    
+    // If LLM call failed and no fallback succeeded, return error
+    if (!llmResult) {
+      return res.status(502).json({ 
+        detail: "Erro na API do LLM: Todos os provedores falharam.", 
+        error: llmError?.message,
+        suggestion: "Verifique suas chaves de API ou tente novamente mais tarde."
+      });
     }
 
     const responseText = llmResult.text || "Desculpe, não consegui gerar uma resposta.";
