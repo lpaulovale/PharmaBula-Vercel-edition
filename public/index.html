@@ -508,6 +508,47 @@
         .judge-loading .spinner { width: 13px; height: 13px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
 
+        /* Judgment Banner (from tcc-final) */
+        .judgment-banner {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 16px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+        .judgment-banner.approved {
+            background: rgba(14,165,122,0.15);
+            border: 1px solid rgba(14,165,122,0.3);
+            color: var(--accent);
+        }
+        .judgment-banner.caveats {
+            background: rgba(234,179,8,0.15);
+            border: 1px solid rgba(234,179,8,0.3);
+            color: #eab308;
+        }
+        .judgment-banner.revision {
+            background: rgba(249,115,22,0.15);
+            border: 1px solid rgba(249,115,22,0.3);
+            color: #f97316;
+        }
+        .judgment-banner.rejected {
+            background: rgba(239,68,68,0.15);
+            border: 1px solid rgba(239,68,68,0.3);
+            color: #ef4444;
+        }
+        .judgment-score {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+        }
+        .judgment-details {
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
         /* ── Scrollbar ── */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -789,6 +830,49 @@
             }
             
             let richHtml = marked.parse(responseText);
+            
+            // Build judgment banner if evaluation data exists (from judge pipeline)
+            let judgment = null;
+            if (data.judgment) {
+                judgment = data.judgment;
+            } else if (data.metadata && data.metadata.judgment) {
+                judgment = data.metadata.judgment;
+            }
+            
+            if (judgment) {
+                const decision = judgment.decision || 'UNKNOWN';
+                const score = judgment.score || 0;
+                const breakdown = judgment.score_breakdown || {};
+                
+                let icon = '✅';
+                let label = 'Resposta Aprovada';
+                let bannerClass = 'approved';
+                
+                if (decision === 'APPROVED_WITH_CAVEATS') {
+                    icon = '⚠️';
+                    label = 'Aprovada com Ressalvas';
+                    bannerClass = 'caveats';
+                } else if (decision === 'NEEDS_REVISION') {
+                    icon = '🟠';
+                    label = 'Precisa de Revisão';
+                    bannerClass = 'revision';
+                } else if (decision === 'REJECTED') {
+                    icon = '❌';
+                    label = 'Resposta Rejeitada';
+                    bannerClass = 'rejected';
+                }
+                
+                let breakdownStr = '';
+                if (breakdown.safety !== undefined) {
+                    breakdownStr = `Segurança: ${breakdown.safety} | Qualidade: ${breakdown.quality || 'N/A'} | Fonte: ${breakdown.attribution || 'N/A'} | Formato: ${breakdown.format || 'N/A'}`;
+                }
+                
+                richHtml = `<div class="judgment-banner ${bannerClass}">
+                    <div class="judgment-score">${icon} ${label} (Score: ${score}/100)</div>
+                    ${breakdownStr ? `<div class="judgment-details">📊 ${breakdownStr}</div>` : ''}
+                </div>` + richHtml;
+            }
+            
             if (data.sources && data.sources.length > 0) {
                 richHtml += '<div style="margin-top:12px;padding:10px 13px;background:var(--accent-soft);border-radius:12px;border:1px solid var(--accent-mid);font-size:13px;">';
                 richHtml += '<strong style="color:var(--accent);">📋 Fontes</strong><br>';
