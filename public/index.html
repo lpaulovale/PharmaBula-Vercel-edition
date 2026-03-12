@@ -770,6 +770,24 @@
             if (!res.ok) { const err=await res.json(); throw new Error(err.detail||'Erro'); }
             const data = await res.json();
             const responseText = data.response || '';
+            
+            // Show fallback notification if primary model failed
+            if (data.metadata?.usedFallback) {
+                const fallbackNotice = document.createElement('div');
+                fallbackNotice.className = 'fallback-notice';
+                fallbackNotice.innerHTML = `
+                    <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(234,179,8,0.12);border:1px solid rgba(234,179,8,0.3);border-radius:12px;margin-bottom:12px;font-size:13px;color:#eab308;">
+                        <i data-lucide="triangle-alert" style="width:18px;height:18px;"></i>
+                        <span>Modelo principal indisponível. Usando modelo alternativo.</span>
+                    </div>
+                `;
+                const msgBody = document.createElement('div');
+                msgBody.className = 'message assistant';
+                msgBody.appendChild(fallbackNotice);
+                msgsCont.appendChild(msgBody);
+                lucide.createIcons();
+            }
+            
             let richHtml = marked.parse(responseText);
             if (data.sources && data.sources.length > 0) {
                 richHtml += '<div style="margin-top:12px;padding:10px 13px;background:var(--accent-soft);border-radius:12px;border:1px solid var(--accent-mid);font-size:13px;">';

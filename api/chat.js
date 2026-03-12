@@ -269,6 +269,7 @@ module.exports = async function handler(req, res) {
         documents: context || null,
         evaluateUrl: "/api/evaluate",
         model: llmResult?.config || null,
+        usedFallback: llmResult?.usedFallback || false, // Signal if fallback was used
         plan: plan, // Include full plan for debugging
       },
     });
