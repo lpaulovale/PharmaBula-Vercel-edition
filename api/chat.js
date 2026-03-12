@@ -185,26 +185,28 @@ module.exports = async function handler(req, res) {
     const seenNames = new Set();
 
     for (const r of toolResults) {
-      if (r.tool === "get_bula_data" && r.found && r.data) {
-        const name = `Bula ${r.data.name} - ANVISA`;
+      if ((r.tool === "get_bula_data" || r.tool === "get_section" || r.tool === "fetch_anvisa_bula") && r.found && r.data) {
+        const name = r.tool === "get_section" ? `Bula ${r.data.name} - ANVISA (${r.data.section})` : `Bula ${r.data.name} - ANVISA`;
         if (!seenNames.has(name)) {
           seenNames.add(name);
           sources.push({
             name: r.data.name,
             displayName: name,
-            pdfUrl: r.data.pdfUrl || null
+            pdfUrl: r.data.pdfUrl || r.pdfUrl || null
           });
         }
       }
-      if (r.tool === "get_section" && r.found && r.data) {
-        const name = `Bula ${r.data.name} - ANVISA (${r.data.section})`;
-        if (!seenNames.has(name)) {
-          seenNames.add(name);
-          sources.push({
-            name: r.data.name,
-            displayName: name,
-            pdfUrl: r.data.pdfUrl || null
-          });
+      if (r.tool === "search_medication" && r.resultsCount > 0) {
+        for (const res of r.results) {
+          const name = `Bula ${res.name} - ${res.company}`;
+          if (!seenNames.has(name) && res.pdfUrl) {
+            seenNames.add(name);
+            sources.push({
+              name: res.name,
+              displayName: name,
+              pdfUrl: res.pdfUrl
+            });
+          }
         }
       }
       if (r.tool === "find_generic_versions" && r.versionsFound > 0) {
