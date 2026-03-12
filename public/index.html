@@ -814,27 +814,16 @@
         lucide.createIcons();
     });
 
-    // PDF Viewer Functions
+    // PDF Viewer Functions - Opens ANVISA PDF in new tab
     function openPdfViewer(pdfUrl, drugName) {
-        const modal = document.getElementById('pdf-modal');
-        const viewer = document.getElementById('pdf-viewer');
-        const title = document.getElementById('pdf-title');
-        const downloadLink = document.getElementById('pdf-download-link');
-        
-        viewer.src = pdfUrl;
-        title.textContent = `Bula: ${drugName}`;
-        downloadLink.href = pdfUrl;
-        
-        modal.classList.add('active');
-        lucide.createIcons();
+        if (pdfUrl) {
+            window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+        }
     }
     
     function closePdfViewer() {
-        const modal = document.getElementById('pdf-modal');
-        const viewer = document.getElementById('pdf-viewer');
-        
-        viewer.src = '';
-        modal.classList.remove('active');
+        // No-op for new tab approach
+        console.log('PDF opened in new tab');
     }
     
     // Close modal on Escape key
@@ -1011,27 +1000,43 @@
                 </div>` + richHtml;
             }
             
-            // Only show sources if we have PDF URLs (from ANVISA)
-            const pdfSources = data.sources?.filter(s => s.pdfUrl) || [];
+            // Show sources with PDF viewer
+            const sources = data.sources || [];
             
-            if (pdfSources.length > 0) {
+            if (sources.length > 0) {
                 richHtml += '<div style="margin-top:12px;padding:10px 13px;background:var(--accent-soft);border-radius:12px;border:1px solid var(--accent-mid);font-size:13px;">';
                 richHtml += '<div style="margin-bottom:8px;"><strong style="color:var(--accent);">📋 Bula Oficial</strong></div>';
                 richHtml += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
                 
-                pdfSources.forEach((src) => {
-                    richHtml += `<div onclick="openPdfViewer('${src.pdfUrl}', '${src.name}')"
-                        style="display:inline-flex;align-items:center;gap:6px;
-                        padding:6px 14px;background:rgba(14,165,122,0.1);
-                        border:1px solid rgba(14,165,122,0.3);border-radius:20px;
-                        color:var(--accent);font-size:13px;font-weight:500;
-                        cursor:pointer;transition:all 0.2s;"
-                        onmouseover="this.style.background='rgba(14,165,122,0.2)';this.style.transform='translateY(-1px)'"
-                        onmouseout="this.style.background='rgba(14,165,122,0.1)';this.style.transform='translateY(0)'"
-                        title="Ver bula oficial de ${src.name}">
-                        <span class="ico" data-lucide="file-text" style="width:16px;height:16px;"></span>
-                        ${src.name}
-                    </div>`;
+                sources.forEach((src) => {
+                    // Handle both string and object formats
+                    const drugName = typeof src === 'string' ? src : (src.name || src.displayName);
+                    const pdfUrl = typeof src === 'object' ? src.pdfUrl : null;
+                    
+                    if (pdfUrl) {
+                        // Has PDF - open viewer
+                        richHtml += `<div onclick="openPdfViewer('${pdfUrl}', '${drugName}')"
+                            style="display:inline-flex;align-items:center;gap:6px;
+                            padding:6px 14px;background:rgba(14,165,122,0.1);
+                            border:1px solid rgba(14,165,122,0.3);border-radius:20px;
+                            color:var(--accent);font-size:13px;font-weight:500;
+                            cursor:pointer;transition:all 0.2s;"
+                            onmouseover="this.style.background='rgba(14,165,122,0.2)';this.style.transform='translateY(-1px)'"
+                            onmouseout="this.style.background='rgba(14,165,122,0.1)';this.style.transform='translateY(0)'"
+                            title="Ver bula oficial de ${drugName}">
+                            <span class="ico" data-lucide="file-text" style="width:16px;height:16px;"></span>
+                            ${drugName}
+                        </div>`;
+                    } else {
+                        // No PDF - just show name
+                        richHtml += `<div style="display:inline-flex;align-items:center;gap:6px;
+                            padding:6px 14px;background:rgba(14,165,122,0.1);
+                            border:1px solid rgba(14,165,122,0.3);border-radius:20px;
+                            color:var(--accent);font-size:13px;font-weight:500;">
+                            <span class="ico" data-lucide="file-text" style="width:16px;height:16px;"></span>
+                            ${drugName}
+                        </div>`;
+                    }
                 });
                 
                 richHtml += '</div></div>';
@@ -1045,13 +1050,6 @@
             if (window.renderMathInElement) {
                 const last = msgsCont.lastElementChild;
                 if (last) renderMathInElement(last, { delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false},{left:'\\(',right:'\\)',display:false},{left:'\\[',right:'\\]',display:true}], throwOnError:false });
-            }
-
-            // Auto-open PDF viewer if we have PDF URL from ANVISA
-            if (data.metadata?.pdfUrl) {
-                setTimeout(() => {
-                    openPdfViewer(data.metadata.pdfUrl, data.metadata.drugName || 'Bula');
-                }, 800);
             }
 
             // Judge eval
