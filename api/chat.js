@@ -120,6 +120,28 @@ module.exports = async function handler(req, res) {
     }
 
     // =========================================
+    // FAIL CLEANLY if ANVISA tools returned errors
+    // =========================================
+    const anvisaFailure = toolResults.find(r => 
+      (r.tool === "get_bula_data" || r.tool === "get_section") && 
+      r.found === false && 
+      r.error
+    );
+    
+    if (anvisaFailure) {
+      return res.status(200).json({
+        response: anvisaFailure.error,
+        sources: [],
+        metadata: {
+          mode,
+          drugsDetected: plan.drugs || [],
+          anvisaError: true,
+          toolsExecuted: toolLog,
+        },
+      });
+    }
+
+    // =========================================
     // Step 4: Build prompt via prompt_manager
     // =========================================
     const context = buildContextPrompt(toolResults);
