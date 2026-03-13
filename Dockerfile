@@ -40,20 +40,15 @@ RUN apk add --no-cache \
     cups-libs \
     tzdata
 
-# Set Playwright environment variables
+# Set Playwright environment variables - use system chromium
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
-ENV PLAYWRIGHT_BROWSERS_PATH=/usr/bin/chromium-browser
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # Copy package files
 COPY package*.json ./
 
 # Install dependencies
 RUN npm ci --only=production
-
-# Install Playwright Chromium browser (without deps - already installed via apk)
-RUN npx playwright install chromium
 
 # Copy application code from builder
 COPY --from=builder /app/api ./api
