@@ -52,8 +52,8 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --only=production
 
-# Install Playwright Chromium browser
-RUN npx playwright install chromium --with-deps
+# Install Playwright Chromium browser (without deps - already installed via apk)
+RUN npx playwright install chromium
 
 # Copy application code from builder
 COPY --from=builder /app/api ./api
