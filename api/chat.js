@@ -146,7 +146,7 @@ module.exports = async function handler(req, res) {
     // =========================================
     const context = buildContextPrompt(toolResults);
 
-    const systemPrompt = getSystemPrompt(mode, {
+    const systemPrompt = getSystemPrompt("planner", { mode, 
       date: new Date().toISOString().split("T")[0],
       question: message,
       documents: context || getNoDataPrompt(),
