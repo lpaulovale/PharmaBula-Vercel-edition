@@ -1,0 +1,53 @@
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist
+build
+
+# Vercel (no longer needed)
+.vercel
+
+# Fly.io
+fly.toml.bak
+
+# Logs
+logs
+*.log
+
+# Test files
+test-*.js
+coverage
+
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+!README.md
+
+# Screenshots
+screenshots
+
+# MCP server (optional in production)
+# mcp_server.js

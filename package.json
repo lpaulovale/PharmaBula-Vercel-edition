@@ -1,21 +1,31 @@
 {
     "name": "bula-ia",
     "version": "1.0.0",
-    "description": "BulaIA - Assistente inteligente de medicamentos (Vercel Edition)",
+    "description": "BulaIA - Assistente inteligente de medicamentos (Fly.io Edition)",
     "private": true,
+    "main": "server.js",
     "scripts": {
-        "dev": "vercel dev",
+        "dev": "node server.js",
         "build": "echo 'No build step needed'",
-        "start": "vercel dev",
+        "start": "node server.js",
         "mcp": "node mcp_server.js",
-        "mcp:http": "MCP_HTTP=true node mcp_server.js"
+        "mcp:http": "MCP_HTTP=true node mcp_server.js",
+        "test:anvisa": "node scripts/test-anvisa.js",
+        "docker:build": "docker build -t pharmabula-ai .",
+        "docker:run": "docker run -p 8080:8080 --env-file .env pharmabula-ai",
+        "fly:deploy": "fly deploy",
+        "fly:logs": "fly logs"
     },
     "dependencies": {
         "@modelcontextprotocol/sdk": "^1.0.4",
+        "cors": "^2.8.6",
         "dotenv": "^17.3.1",
         "express": "^4.21.2",
         "mongodb": "^6.12.0",
-        "pdf-parse": "^1.1.1"
+        "pdf-parse": "^1.1.1",
+        "playwright": "^1.40.0",
+        "playwright-extra": "^4.3.6",
+        "puppeteer-extra-plugin-stealth": "^2.11.2"
     },
     "engines": {
         "node": ">=18.0.0"

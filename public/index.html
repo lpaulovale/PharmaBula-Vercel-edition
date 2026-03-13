@@ -814,23 +814,38 @@
         lucide.createIcons();
     });
 
-    // PDF Viewer Functions - Modal iframe (fallback to new tab)
-    function openPdfViewer(pdfUrl, drugName) {
-        if (!pdfUrl) return;
+    // PDF Viewer Functions - Modal iframe with base64 support
+    function openPdfViewer(pdfData, drugName) {
+        if (!pdfData) return;
         const modal = document.getElementById('pdf-modal');
         const iframe = document.getElementById('pdf-viewer');
         const title = document.getElementById('pdf-title');
         const downloadLink = document.getElementById('pdf-download-link');
 
         title.textContent = drugName ? `Bula - ${drugName}` : 'Bula - ANVISA';
-        downloadLink.href = pdfUrl;
+
+        // Check if pdfData is base64 or URL
+        let src;
+        if (pdfData.startsWith('data:application/pdf;base64,')) {
+            // Already a data URL
+            src = pdfData;
+            downloadLink.href = pdfData;
+        } else if (pdfData.startsWith('JVBER')) {
+            // Raw base64, convert to data URL
+            src = `data:application/pdf;base64,${pdfData}`;
+            downloadLink.href = src;
+        } else {
+            // Regular URL, use proxy
+            src = `/api/pdf?url=${encodeURIComponent(pdfData)}`;
+            downloadLink.href = pdfData;
+        }
 
         try {
-            iframe.src = pdfUrl;
+            iframe.src = src;
             modal.classList.add('active');
             lucide.createIcons();
         } catch (e) {
-            window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+            window.open(pdfData, '_blank', 'noopener,noreferrer');
         }
     }
     
@@ -1023,14 +1038,16 @@
             console.log('[DEBUG] Metadata pdfUrl:', data.metadata?.pdfUrl);
             
             if (sources.length > 0) {
-                const primaryPdfUrl = data.metadata?.pdfUrl || null;
+                const primaryPdfData = data.sources?.[0]?.pdfBase64 || data.metadata?.pdfUrl || null;
                 const primaryDrugName = data.metadata?.drugName || null;
 
                 richHtml += '<div style="margin-top:12px;padding:10px 13px;background:var(--accent-soft);border-radius:12px;border:1px solid var(--accent-mid);font-size:13px;">';
                 richHtml += '<div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;">';
                 richHtml += '<strong style="color:var(--accent);">📋 Bula Oficial</strong>';
-                if (primaryPdfUrl) {
-                    richHtml += `<button type="button" onclick="openPdfViewer('${primaryPdfUrl}','${(primaryDrugName || '').replace(/'/g, "\\'")}')"
+                if (primaryPdfData) {
+                    // Escape the PDF data for HTML attribute
+                    const pdfDataEscaped = primaryPdfData.replace(/'/g, "\\'").substring(0, 500000);
+                    richHtml += `<button type="button" onclick="openPdfViewer('${pdfDataEscaped}','${(primaryDrugName || '').replace(/'/g, "\\'")}')"
                         style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;
                         border:1px solid rgba(14,165,122,0.35);background:rgba(14,165,122,0.12);color:var(--accent);
                         font-size:12px;font-weight:600;cursor:pointer;">

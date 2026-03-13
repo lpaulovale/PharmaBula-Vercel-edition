@@ -192,17 +192,50 @@ module.exports = async function handler(req, res) {
 
     const sources = [];
     const seenNames = new Set();
+    let pdfBuffer = null;
+    let pdfBase64 = null;
 
     for (const r of toolResults) {
+      console.log('[DEBUG] chat.js processing toolResult:', { 
+        tool: r.tool, 
+        found: r.found, 
+        hasData: !!r.data,
+        dataPdfUrl: r.data?.pdfUrl,
+        topLevelPdfUrl: r.pdfUrl 
+      });
+      
       if ((r.tool === "get_bula_data" || r.tool === "get_section" || r.tool === "fetch_anvisa_bula") && r.found && r.data) {
         const name = r.tool === "get_section" ? `Bula ${r.data.name} - ANVISA (${r.data.section})` : `Bula ${r.data.name} - ANVISA`;
         if (!seenNames.has(name)) {
           seenNames.add(name);
+          
+          // Download PDF and convert to base64 if we have a URL
+          if (r.data.pdfUrl) {
+            try {
+              const response = await fetch(r.data.pdfUrl, {
+                headers: {
+                  "Accept": "application/pdf",
+                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                },
+              });
+              if (response.ok) {
+                const arrayBuffer = await response.arrayBuffer();
+                pdfBuffer = Buffer.from(arrayBuffer);
+                pdfBase64 = pdfBuffer.toString('base64');
+                console.log('[DEBUG] chat.js downloaded PDF, size:', pdfBuffer.length, 'bytes');
+              }
+            } catch (err) {
+              console.warn('[DEBUG] chat.js failed to download PDF:', err.message);
+            }
+          }
+          
           sources.push({
             name: r.data.name,
             displayName: name,
-            pdfUrl: r.data.pdfUrl || r.pdfUrl || null
+            pdfUrl: r.data.pdfUrl || r.pdfUrl || null,
+            pdfBase64: pdfBase64,
           });
+          console.log('[DEBUG] chat.js added source:', { name, hasPdf: !!pdfBase64 });
         }
       }
       if (r.tool === "search_medication" && r.resultsCount > 0) {

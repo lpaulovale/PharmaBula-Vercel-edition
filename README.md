@@ -3,8 +3,9 @@
 **BulaIA** - An intelligent medication assistant powered by AI, built with a planner-based architecture and real-time ANVISA integration.
 
 ![Node.js](https://img.shields.io/badge/Node.js-18+-green?style=flat&logo=node.js)
-![Vercel](https://img.shields.io/badge/Vercel-Deployed-black?style=flat&logo=vercel)
+![Fly.io](https://img.shields.io/badge/Fly.io-Deployed-black?style=flat&logo=fly.io)
 ![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green?style=flat&logo=mongodb)
+![Docker](https://img.shields.io/badge/Docker-Ready-blue?style=flat&logo=docker)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=flat)
 
 ---
@@ -22,6 +23,8 @@ PharmaBula AI is an intelligent chatbot that helps users understand medication i
 - 🔄 **Automatic Fallback** - Multi-provider LLM chain ensures reliability when API quotas are exceeded
 - 👥 **Dual Mode** - Supports both patient and professional medication information modes
 - 💬 **Conversation History** - Context-aware responses using conversation memory
+- 📄 **PDF Viewer** - Built-in PDF viewer to visualize original ANVISA bulletins
+- 🐳 **Docker Ready** - Containerized deployment with Fly.io support
 
 ---
 
@@ -68,12 +71,12 @@ PharmaBula AI is an intelligent chatbot that helps users understand medication i
 | Category | Technology |
 |----------|------------|
 | **Runtime** | Node.js 18+ |
-| **Framework** | Express.js (Vercel Serverless) |
+| **Framework** | Express.js |
 | **Database** | MongoDB Atlas |
 | **LLM Providers** | HuggingFace, OpenAI, Anthropic, Google AI |
 | **External API** | ANVISA Bulário Eletrônico |
 | **PDF Processing** | pdf-parse |
-| **Deployment** | Vercel |
+| **Deployment** | Fly.io + Docker |
 
 ---
 
@@ -84,6 +87,8 @@ PharmaBula AI is an intelligent chatbot that helps users understand medication i
 - Node.js 18 or higher
 - MongoDB Atlas connection string
 - API keys for LLM providers (HuggingFace, OpenAI, etc.)
+- Docker (optional, for local testing)
+- Fly.io account (for deployment)
 
 ### Installation
 
@@ -110,25 +115,63 @@ PRIMARY_MODEL=meta-llama/Llama-3.1-8B-Instruct:cerebras
 PRIMARY_API_KEY=your_huggingface_token
 
 # Fallback LLM (for reliability)
-FALLBACK_PROVIDER=openai
-FALLBACK_MODEL=gpt-3.5-turbo
-FALLBACK_API_KEY=your_openai_key
+FALLBACK_PROVIDER=huggingface
+FALLBACK_MODEL=meta-llama/Llama-3.1-8B-Instruct:cerebras
+FALLBACK_API_KEY=your_huggingface_token
 
 # MongoDB Atlas
 MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/pharmabula
+
+# Server Configuration (Fly.io)
+PORT=8080
+NODE_ENV=production
 ```
 
 ### Local Development
 
 ```bash
-# Run development server (Vercel CLI)
+# Start the Express server
 npm run dev
 
 # Or start directly
 npm start
 ```
 
-The API will be available at `http://localhost:3000/api/chat`
+The API will be available at `http://localhost:8080`
+
+### Docker (Local Testing)
+
+```bash
+# Build Docker image
+npm run docker:build
+
+# Run container
+npm run docker:run
+```
+
+### Fly.io Deployment
+
+```bash
+# Install Fly.io CLI
+curl -L https://fly.io/install.sh | sh
+
+# Login to Fly.io
+fly auth login
+
+# Create a new app
+fly launch --no-deploy
+
+# Set up secrets (MongoDB and API keys)
+fly secrets set MONGODB_URI="your_mongodb_uri"
+fly secrets set PRIMARY_API_KEY="your_huggingface_token"
+fly secrets set FALLBACK_API_KEY="your_fallback_key"
+
+# Deploy
+fly deploy
+
+# View logs
+fly logs
+```
 
 ---
 
@@ -152,7 +195,11 @@ Main chat endpoint for medication queries.
 {
   "response": "Os efeitos colaterais do Paracetamol incluem...",
   "sources": [
-    "Bula Paracetamol Richet - ANVISA"
+    {
+      "name": "Paracetamol",
+      "displayName": "Bula Paracetamol Richet - ANVISA",
+      "pdfUrl": "https://consultas.anvisa.gov.br/..."
+    }
   ],
   "metadata": {
     "mode": "patient",
@@ -164,8 +211,39 @@ Main chat endpoint for medication queries.
       "drugs": ["Paracetamol"],
       "topics": ["reacoes_adversas"],
       "tools": [...]
-    }
+    ],
+    "pdfUrl": "https://consultas.anvisa.gov.br/...",
+    "drugName": "Paracetamol"
   }
+}
+```
+
+### GET `/api/pdf`
+
+PDF proxy endpoint for viewing ANVISA bulletins (avoids CORS issues).
+
+**Query Parameters:**
+- `url` - The ANVISA PDF URL to stream
+
+**Example:**
+```
+GET /api/pdf?url=https://consultas.anvisa.gov.br/api/.../bula.pdf
+```
+
+**Response:** PDF file streamed directly from ANVISA
+
+### POST `/api/evaluate`
+
+Evaluate response quality using MCP judges.
+
+**Request Body:**
+```json
+{
+  "question": "Quais são os efeitos colaterais?",
+  "response": "Os efeitos incluem...",
+  "documents": "...",
+  "mode": "patient",
+  "sessionId": "..."
 }
 ```
 
@@ -261,9 +339,12 @@ pharmabula-vercel/
 │   ├── db.js             # MongoDB connection
 │   └── prompt_manager.js # System prompt builder
 ├── public/
-│   └── index.html        # Frontend (if applicable)
+│   └── index.html        # Frontend with PDF viewer
+├── Dockerfile            # Docker container config
+├── fly.toml              # Fly.io deployment config
+├── server.js             # Express.js server entry point
+├── .dockerignore         # Docker build exclusions
 ├── .env.example          # Environment template
-├── vercel.json           # Vercel configuration
 └── package.json
 ```
 
@@ -274,10 +355,12 @@ pharmabula-vercel/
 | Challenge | Solution |
 |-----------|----------|
 | **LLM API Quota Exhaustion** | Implemented multi-provider fallback chain |
-| **PDF Processing Timeout** | Optimized extraction with 9s timeout buffer for Vercel 10s limit |
+| **PDF Processing Timeout** | Optimized extraction with 9s timeout buffer |
 | **Context-Aware Responses** | Conversation history with MongoDB session storage |
 | **Portuguese Language Nuances** | Custom prompt engineering for Brazilian Portuguese medical terminology |
 | **Real-Time Data Accuracy** | Direct ANVISA API integration with intelligent caching |
+| **CORS Issues with PDFs** | PDF proxy endpoint streams content server-side |
+| **Vercel Serverless Limits** | Migrated to Fly.io with Docker for better control |
 
 ---
 
@@ -288,6 +371,8 @@ pharmabula-vercel/
 - [ ] Add medication reminder features
 - [ ] Expand to other Portuguese-speaking countries' health APIs
 - [ ] Mobile app with React Native
+- [ ] PDF annotation and highlighting features
+- [ ] Download PDF for offline viewing
 
 ---
 
