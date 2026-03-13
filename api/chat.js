@@ -181,6 +181,15 @@ module.exports = async function handler(req, res) {
     // =========================================
     // Step 6: Build sources
     // =========================================
+    console.log('[DEBUG] toolResults summary:',
+      toolResults.map(r => ({
+        tool: r.tool,
+        found: r.found,
+        dataPdfUrl: r.data?.pdfUrl || null,
+        topLevelPdfUrl: r.pdfUrl || null,
+      }))
+    );
+
     const sources = [];
     const seenNames = new Set();
 
