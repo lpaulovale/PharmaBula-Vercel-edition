@@ -17,7 +17,7 @@
 
 const { getSessionsCollection } = require("../lib/db");
 const { executeTool, listTools } = require("../lib/tool_registry");
-const { getSystemPrompt, buildContextPrompt, getNoDataPrompt } = require("../lib/prompt_manager");
+const { getSystemPrompt, buildContextPrompt, getNoDataPrompt, getResponsePrompt } = require("../lib/prompt_manager");
 const { planQuery } = require("../lib/planner");
 const { chat, chatWithModel } = require("../lib/llm_client");
 
@@ -146,7 +146,7 @@ module.exports = async function handler(req, res) {
     // =========================================
     const context = buildContextPrompt(toolResults);
 
-    const systemPrompt = getSystemPrompt("planner", { mode, 
+    const systemPrompt = getResponsePrompt(mode, { 
       date: new Date().toISOString().split("T")[0],
       question: message,
       documents: context || getNoDataPrompt(),
