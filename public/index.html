@@ -814,16 +814,31 @@
         lucide.createIcons();
     });
 
-    // PDF Viewer Functions - Opens ANVISA PDF in new tab
+    // PDF Viewer Functions - Modal iframe (fallback to new tab)
     function openPdfViewer(pdfUrl, drugName) {
-        if (pdfUrl) {
+        if (!pdfUrl) return;
+        const modal = document.getElementById('pdf-modal');
+        const iframe = document.getElementById('pdf-viewer');
+        const title = document.getElementById('pdf-title');
+        const downloadLink = document.getElementById('pdf-download-link');
+
+        title.textContent = drugName ? `Bula - ${drugName}` : 'Bula - ANVISA';
+        downloadLink.href = pdfUrl;
+
+        try {
+            iframe.src = pdfUrl;
+            modal.classList.add('active');
+            lucide.createIcons();
+        } catch (e) {
             window.open(pdfUrl, '_blank', 'noopener,noreferrer');
         }
     }
     
     function closePdfViewer() {
-        // No-op for new tab approach
-        console.log('PDF opened in new tab');
+        const modal = document.getElementById('pdf-modal');
+        const iframe = document.getElementById('pdf-viewer');
+        modal.classList.remove('active');
+        iframe.src = '';
     }
     
     // Close modal on Escape key
@@ -1008,8 +1023,22 @@
             console.log('[DEBUG] Metadata pdfUrl:', data.metadata?.pdfUrl);
             
             if (sources.length > 0) {
+                const primaryPdfUrl = data.metadata?.pdfUrl || null;
+                const primaryDrugName = data.metadata?.drugName || null;
+
                 richHtml += '<div style="margin-top:12px;padding:10px 13px;background:var(--accent-soft);border-radius:12px;border:1px solid var(--accent-mid);font-size:13px;">';
-                richHtml += '<div style="margin-bottom:8px;"><strong style="color:var(--accent);">📋 Bula Oficial</strong></div>';
+                richHtml += '<div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;">';
+                richHtml += '<strong style="color:var(--accent);">📋 Bula Oficial</strong>';
+                if (primaryPdfUrl) {
+                    richHtml += `<button type="button" onclick="openPdfViewer('${primaryPdfUrl}','${(primaryDrugName || '').replace(/'/g, "\\'")}')"
+                        style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;
+                        border:1px solid rgba(14,165,122,0.35);background:rgba(14,165,122,0.12);color:var(--accent);
+                        font-size:12px;font-weight:600;cursor:pointer;">
+                        <span class="ico" data-lucide="book-open" style="width:16px;height:16px;"></span>
+                        Abrir PDF
+                    </button>`;
+                }
+                richHtml += '</div>';
                 richHtml += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
 
                 sources.forEach((src) => {
