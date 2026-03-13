@@ -17,7 +17,7 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install Playwright dependencies (updated for Alpine 3.21)
+# Install Playwright dependencies
 RUN apk add --no-cache \
     chromium \
     nss \
@@ -49,8 +49,11 @@ ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 # Copy package files
 COPY package*.json ./
 
-# Install only production dependencies
+# Install dependencies
 RUN npm ci --only=production
+
+# Install Playwright Chromium browser
+RUN npx playwright install chromium --with-deps
 
 # Copy application code from builder
 COPY --from=builder /app/api ./api
