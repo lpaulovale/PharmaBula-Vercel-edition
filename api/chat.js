@@ -93,7 +93,7 @@ module.exports = async function handler(req, res) {
     }
 
     // =========================================
-    // Step 3: Execute tools from plan (PARALLEL)
+    // Step 3: Execute tools from plan (with fallback support)
     // =========================================
     const toolResults = [];
     const toolLog = [];
@@ -104,23 +104,28 @@ module.exports = async function handler(req, res) {
     if (plan.tools.length === 0) {
       console.log("[MCP] No tools to execute.");
     } else {
-      console.log(`[MCP] Executing ${plan.tools.length} tool(s) in parallel...`);
+      console.log(`[MCP] Executing ${plan.tools.length} tool(s)...`);
 
-      // Execute all tools in parallel
-      const results = await Promise.all(
-        plan.tools.map(async (toolCall) => {
-          try {
-            const result = await executeTool(toolCall.name, toolCall.args);
-            toolLog.push({ tool: toolCall.name, args: toolCall.args });
-            return result;
-          } catch (err) {
-            console.error(`[MCP] Tool ${toolCall.name} failed:`, err.message);
-            return { tool: toolCall.name, error: err.message };
+      // Execute tools sequentially to support fallback
+      for (const toolCall of plan.tools) {
+        try {
+          let result = await executeTool(toolCall.name, toolCall.args);
+          toolLog.push({ tool: toolCall.name, args: toolCall.args });
+
+          // Check if we need to use fallback (section not found)
+          if (plan.fallback && result.found === false && toolCall.name === 'get_section') {
+            console.log(`[MCP] Section not found, falling back to ${plan.fallback.name}`);
+            result = await executeTool(plan.fallback.name, plan.fallback.args);
+            toolLog.push({ tool: plan.fallback.name, args: plan.fallback.args, fallback: true });
+            result._usedFallback = true;
           }
-        })
-      );
 
-      toolResults.push(...results);
+          toolResults.push(result);
+        } catch (err) {
+          console.error(`[MCP] Tool ${toolCall.name} failed:`, err.message);
+          toolResults.push({ tool: toolCall.name, error: err.message });
+        }
+      }
     }
 
     // =========================================
@@ -218,6 +223,7 @@ module.exports = async function handler(req, res) {
         tool: r.tool,
         found: r.found,
         hasData: !!r.data,
+        usedFallback: !!r._usedFallback,
       }))
     );
 
@@ -229,16 +235,26 @@ module.exports = async function handler(req, res) {
       console.log('[DEBUG] chat.js processing toolResult:', {
         tool: r.tool,
         found: r.found,
-        hasData: !!r.data
+        hasData: !!r.data,
+        section: r.data?.section,
+        contentLength: (r.data?.content || r.data?.textContent)?.length,
       });
 
       if ((r.tool === "get_bula_data" || r.tool === "get_section") && r.found && r.data) {
         const drugName = r.data.name;
-        const sectionName = r.tool === "get_section" ? r.data.section : "completa";
+        const sectionName = r.tool === "get_section" ? r.data.section : "bula_completa";
         const displayName = `Bula ${drugName}`;
 
+        // Get content - normalize field names for frontend
+        const content = r.data.content || r.data.textContent || r.data.textContent;
+
         // Debug: log what section was retrieved
-        console.log('[DEBUG] Storing extracted section:', { drugName, section: sectionName, contentLength: (r.data.content || r.data.textContent)?.length });
+        console.log('[DEBUG] Storing extracted section:', { 
+          drugName, 
+          section: sectionName, 
+          contentLength: content?.length,
+          hasContent: !!content,
+        });
 
         // Store extracted data for popup
         if (!extractedData[drugName]) {
@@ -247,7 +263,9 @@ module.exports = async function handler(req, res) {
             sections: {}
           };
         }
-        extractedData[drugName].sections[sectionName] = r.data.content || r.data.textContent;
+        
+        // Ensure content is never undefined/null for frontend
+        extractedData[drugName].sections[sectionName] = content || "Conteúdo não disponível.";
 
         // Add source only once per drug
         if (!seenNames.has(drugName)) {
@@ -334,10 +352,19 @@ module.exports = async function handler(req, res) {
     }
 
     // Debug: log extracted data before sending
-    console.log('[DEBUG] Extracted data to send:', Object.keys(extractedData).reduce((acc, drug) => {
-      acc[drug] = Object.keys(extractedData[drug].sections);
+    const extractedDataDebug = Object.keys(extractedData).reduce((acc, drug) => {
+      acc[drug] = Object.keys(extractedData[drug].sections).reduce((secAcc, section) => {
+        secAcc[section] = {
+          length: extractedData[drug].sections[section]?.length || 0,
+          hasContent: !!extractedData[drug].sections[section],
+        };
+        return secAcc;
+      }, {});
       return acc;
-    }, {}));
+    }, {});
+    
+    console.log('[DEBUG] Extracted data to send:', extractedDataDebug);
+    console.log('[DEBUG] Full extractedData JSON:', JSON.stringify(extractedData, null, 2));
 
     return res.status(200).json({
       response: responseText,
