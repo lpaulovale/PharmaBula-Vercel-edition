@@ -150,7 +150,12 @@ module.exports = async function handler(req, res) {
     // =========================================
     const context = buildContextPrompt(toolResults);
 
-    const systemPrompt = getResponsePrompt(mode, { 
+    // Debug: log what sections are in the context
+    console.log('[DEBUG] Context sections:', toolResults
+      .filter(r => r.tool === 'get_section' && r.found)
+      .map(r => r.data.section));
+
+    const systemPrompt = getResponsePrompt(mode, {
       date: new Date().toISOString().split("T")[0],
       question: message,
       documents: context || getNoDataPrompt(),
