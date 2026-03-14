@@ -183,7 +183,8 @@ module.exports = async function handler(req, res) {
         llmResult = await chatWithModel(messages, modelOptions);
       } else {
         // chat() has built-in fallback chain (primary -> fallback)
-        llmResult = await chat(messages, { temperature: 0.3, maxTokens: 1024 });
+        // Limit tokens to prevent runaway generation
+        llmResult = await chat(messages, { temperature: 0.3, maxTokens: 512 });
       }
     } catch (llmErr) {
       console.error("LLM call failed:", llmErr.message);
