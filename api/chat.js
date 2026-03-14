@@ -215,6 +215,7 @@ module.exports = async function handler(req, res) {
 
     const sources = [];
     const seenNames = new Set();
+    const extractedData = {}; // Store extracted section data for popup display
 
     for (const r of toolResults) {
       console.log('[DEBUG] chat.js processing toolResult:', {
@@ -224,14 +225,27 @@ module.exports = async function handler(req, res) {
       });
 
       if ((r.tool === "get_bula_data" || r.tool === "get_section") && r.found && r.data) {
-        const name = r.tool === "get_section" ? `Bula ${r.data.name} (${r.data.section})` : `Bula ${r.data.name}`;
-        if (!seenNames.has(name)) {
-          seenNames.add(name);
+        const drugName = r.data.name;
+        const sectionName = r.tool === "get_section" ? r.data.section : "completa";
+        const displayName = `Bula ${drugName}`;
+        
+        // Store extracted data for popup
+        if (!extractedData[drugName]) {
+          extractedData[drugName] = {
+            name: drugName,
+            sections: {}
+          };
+        }
+        extractedData[drugName].sections[sectionName] = r.data.content || r.data.textContent;
+
+        // Add source only once per drug
+        if (!seenNames.has(drugName)) {
+          seenNames.add(drugName);
           sources.push({
-            name: r.data.name,
-            displayName: name,
+            name: drugName,
+            displayName: displayName,
           });
-          console.log('[DEBUG] chat.js added source:', { name });
+          console.log('[DEBUG] chat.js added source:', { name: drugName });
         }
       }
       if (r.tool === "search_medication" && r.resultsCount > 0) {
@@ -321,6 +335,8 @@ module.exports = async function handler(req, res) {
         model: llmResult?.config || null,
         usedFallback: llmResult?.usedFallback || false,
         plan: plan,
+        // Add extracted data for popup display
+        extractedData: Object.keys(extractedData).length > 0 ? extractedData : null,
       },
     });
 

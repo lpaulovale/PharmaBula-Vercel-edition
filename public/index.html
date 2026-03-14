@@ -782,6 +782,21 @@
     </div>
 </div>
 
+<!-- Extracted Data Popup Modal -->
+<div class="pdf-modal-overlay" id="extracted-data-modal" style="z-index: 10001;">
+    <div class="pdf-modal-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
+        <div class="pdf-modal-header" style="border-bottom: 1px solid var(--border); margin-bottom: 16px;">
+            <span class="pdf-modal-title" id="extracted-data-title">Dados Extraídos</span>
+            <button class="pdf-modal-close" onclick="closeExtractedDataPopup()" title="Fechar">
+                <i data-lucide="x" style="width:18px;height:18px;"></i>
+            </button>
+        </div>
+        <div id="extracted-data-content" style="padding: 8px 0;">
+            <!-- Content will be inserted here -->
+        </div>
+    </div>
+</div>
+
 <script>
     // Init Lucide icons
     lucide.createIcons();
@@ -855,11 +870,61 @@
         modal.classList.remove('active');
         iframe.src = '';
     }
-    
+
+    // Extracted Data Popup Functions
+    function openExtractedDataPopup(drugName, sectionsJson) {
+        const modal = document.getElementById('extracted-data-modal');
+        const title = document.getElementById('extracted-data-title');
+        const content = document.getElementById('extracted-data-content');
+
+        title.textContent = `Dados Extraídos - ${drugName}`;
+
+        try {
+            const sections = JSON.parse(decodeURIComponent(sectionsJson));
+            let html = '';
+
+            for (const [section, text] of Object.entries(sections)) {
+                const sectionLabel = section === 'completa' ? 'Bula Completa' : 
+                    section === 'reacoes' ? 'Reações Adversas' :
+                    section === 'posologia' ? 'Posologia' :
+                    section === 'contraindicacao' ? 'Contraindicações' :
+                    section === 'indicacao' ? 'Indicações' :
+                    section === 'advertencias' ? 'Advertências' :
+                    section.charAt(0).toUpperCase() + section.slice(1);
+
+                html += `<div style="margin-bottom:20px;">`;
+                html += `<h4 style="color:var(--accent);margin-bottom:8px;font-size:15px;font-weight:600;">${sectionLabel}</h4>`;
+                html += `<div style="background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--border);font-size:13px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(text)}</div>`;
+                html += `</div>`;
+            }
+
+            content.innerHTML = html;
+            modal.classList.add('active');
+            lucide.createIcons();
+        } catch (err) {
+            console.error('Error parsing sections:', err);
+            content.innerHTML = `<div style="color:#ef4444;">Erro ao carregar dados: ${err.message}</div>`;
+            modal.classList.add('active');
+        }
+    }
+
+    function closeExtractedDataPopup() {
+        const modal = document.getElementById('extracted-data-modal');
+        modal.classList.remove('active');
+    }
+
+    // Escape HTML to prevent XSS
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
     // Close modal on Escape key
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closePdfViewer();
+            closeExtractedDataPopup();
         }
     });
     
@@ -1030,66 +1095,45 @@
                 </div>` + richHtml;
             }
 
-            // Show sources with PDF link or ANVISA search
+            // Show sources with extracted data popup
             const sources = data.sources || [];
-            
+            const extractedData = data.metadata?.extractedData || null;
+
             // Debug: Log sources to console
             console.log('[DEBUG] Sources received:', sources);
-            console.log('[DEBUG] Metadata pdfUrl:', data.metadata?.pdfUrl);
-            
-            if (sources.length > 0) {
-                const primaryPdfData = data.sources?.[0]?.pdfBase64 || data.metadata?.pdfUrl || null;
-                const primaryDrugName = data.metadata?.drugName || null;
+            console.log('[DEBUG] Extracted data:', extractedData);
 
+            if (sources.length > 0) {
                 richHtml += '<div style="margin-top:12px;padding:10px 13px;background:var(--accent-soft);border-radius:12px;border:1px solid var(--accent-mid);font-size:13px;">';
                 richHtml += '<div style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;">';
                 richHtml += '<strong style="color:var(--accent);">📋 Bula Oficial</strong>';
-                if (primaryPdfData) {
-                    // Escape the PDF data for HTML attribute
-                    const pdfDataEscaped = primaryPdfData.replace(/'/g, "\\'").substring(0, 500000);
-                    richHtml += `<button type="button" onclick="openPdfViewer('${pdfDataEscaped}','${(primaryDrugName || '').replace(/'/g, "\\'")}')"
-                        style="display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;
-                        border:1px solid rgba(14,165,122,0.35);background:rgba(14,165,122,0.12);color:var(--accent);
-                        font-size:12px;font-weight:600;cursor:pointer;">
-                        <span class="ico" data-lucide="book-open" style="width:16px;height:16px;"></span>
-                        Abrir PDF
-                    </button>`;
-                }
                 richHtml += '</div>';
                 richHtml += '<div style="display:flex;flex-wrap:wrap;gap:8px;">';
 
                 sources.forEach((src) => {
                     const drugName = typeof src === 'string' ? src : (src.name || src.displayName);
-                    const pdfUrl = typeof src === 'object' ? src.pdfUrl : null;
-                    
-                    console.log('[DEBUG] Source:', { drugName, pdfUrl, type: typeof src, raw: src });
+                    const hasExtractedData = extractedData && extractedData[drugName];
+                    const sections = hasExtractedData ? extractedData[drugName].sections : {};
+                    const sectionsList = Object.keys(sections);
 
-                    if (pdfUrl) {
-                        // Has PDF URL - make it a clickable link
-                        richHtml += `<a href="${pdfUrl}" target="_blank" rel="noopener"
-                            style="display:inline-flex;align-items:center;gap:6px;
-                            padding:6px 14px;background:rgba(14,165,122,0.1);
-                            border:1px solid rgba(14,165,122,0.3);border-radius:20px;
-                            color:var(--accent);font-size:13px;font-weight:500;
-                            text-decoration:none;cursor:pointer;transition:all 0.2s;"
-                            onmouseover="this.style.background='rgba(14,165,122,0.2)';this.style.transform='translateY(-1px)'"
-                            onmouseout="this.style.background='rgba(14,165,122,0.1)';this.style.transform='translateY(0)'"
-                            title="Baixar bula de ${drugName}">
-                            <span class="ico" data-lucide="file-text" style="width:16px;height:16px;"></span>
-                            ${drugName}
-                        </a>`;
-                    } else {
-                        // No PDF URL - just show as text
-                        richHtml += `<div style="display:inline-flex;align-items:center;gap:6px;
-                            padding:6px 14px;background:rgba(14,165,122,0.1);
-                            border:1px solid rgba(14,165,122,0.3);border-radius:20px;
-                            color:var(--accent);font-size:13px;font-weight:500;">
-                            <span class="ico" data-lucide="file-text" style="width:16px;height:16px;"></span>
-                            ${drugName}
-                        </div>`;
-                    }
+                    console.log('[DEBUG] Source:', { drugName, hasExtractedData, sections: sectionsList });
+
+                    // Create button to open popup with extracted data
+                    const sectionsJson = encodeURIComponent(JSON.stringify(sections));
+                    richHtml += `<button type="button" onclick="openExtractedDataPopup('${drugName.replace(/'/g, "\\'")}', '${sectionsJson}')"
+                        style="display:inline-flex;align-items:center;gap:6px;
+                        padding:6px 14px;background:rgba(14,165,122,0.1);
+                        border:1px solid rgba(14,165,122,0.3);border-radius:20px;
+                        color:var(--accent);font-size:13px;font-weight:500;
+                        cursor:pointer;transition:all 0.2s;"
+                        onmouseover="this.style.background='rgba(14,165,122,0.2)';this.style.transform='translateY(-1px)'"
+                        onmouseout="this.style.background='rgba(14,165,122,0.1)';this.style.transform='translateY(0)'"
+                        title="Ver dados extraídos da bula de ${drugName}">
+                        <span class="ico" data-lucide="file-text" style="width:16px;height:16px;"></span>
+                        ${drugName}
+                    </button>`;
                 });
-                
+
                 richHtml += '</div></div>';
             }
             richHtml += '<div class="disclaimer-text">⚠️ Informações baseadas em bulas oficiais ANVISA. Sempre consulte um profissional de saúde.</div>';
