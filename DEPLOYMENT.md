@@ -1,6 +1,6 @@
 # 🚀 Fly.io Deployment Guide
 
-## Quick Deploy (3 secrets only)
+## Quick Deploy (2 secrets only)
 
 ```bash
 # 1. Install Fly.io CLI
@@ -12,10 +12,9 @@ fly auth login
 # 3. Create app
 fly launch --no-deploy
 
-# 4. Set ONLY 3 secrets:
+# 4. Set ONLY 2 secrets:
 fly secrets set MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/pharmabula"
 fly secrets set PRIMARY_API_KEY="hf_xxxxxxxxxxxxxxxxxxxxx"
-fly secrets set WEBSHARE_PROXY_URL="http://username:password@proxy.webshare.io:10000"
 
 # 5. Deploy!
 fly deploy
@@ -62,7 +61,7 @@ fly launch --no-deploy
 
 ### 4. Set Secrets
 
-**Required (3):**
+**Required (2):**
 
 ```bash
 # MongoDB Database
@@ -70,9 +69,6 @@ fly secrets set MONGODB_URI="mongodb+srv://user:pass@cluster.mongodb.net/pharmab
 
 # HuggingFace API Key
 fly secrets set PRIMARY_API_KEY="hf_xxxxxxxxxxxxxxxxxxxxx"
-
-# Webshare Proxy (for ANVISA scraping)
-fly secrets set WEBSHARE_PROXY_URL="http://username:password@proxy.webshare.io:10000"
 ```
 
 **Optional:**
@@ -116,21 +112,9 @@ fly logs
 |----------|----------|---------|
 | `MONGODB_URI` | ✅ | Database |
 | `PRIMARY_API_KEY` | ✅ | HuggingFace LLM |
-| `WEBSHARE_PROXY_URL` | ✅ | ANVISA scraping |
 | `FALLBACK_API_KEY` | ❌ | Backup LLM |
 | `OPENAI_API_KEY` | ❌ | Use GPT |
 | `ANTHROPIC_API_KEY` | ❌ | Use Claude |
-
----
-
-## Get Webshare Proxy
-
-1. Sign up at [webshare.io](https://www.webshare.io/)
-2. Free tier: 2 proxies, 10GB/month
-3. Get credentials from dashboard
-4. Format: `http://username:password@proxy.webshare.io:10000`
-
-See `WEB_SHARE_SETUP.md` for details.
 
 ---
 

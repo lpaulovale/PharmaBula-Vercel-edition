@@ -1,6 +1,6 @@
 # PharmaBula AI 🧪💊
 
-**BulaIA** - An intelligent medication assistant powered by AI, built with a planner-based architecture and real-time ANVISA integration.
+**BulaIA** - An intelligent medication assistant powered by AI, built with a planner-based architecture and MongoDB database.
 
 ![Node.js](https://img.shields.io/badge/Node.js-18+-green?style=flat&logo=node.js)
 ![Fly.io](https://img.shields.io/badge/Fly.io-Deployed-black?style=flat&logo=fly.io)
@@ -12,18 +12,18 @@
 
 ## 📋 Overview
 
-PharmaBula AI is an intelligent chatbot that helps users understand medication information from official Brazilian ANVISA drug bulletins (*bulas*). It uses a **planner-based AI architecture** to analyze questions, execute targeted tool calls, and generate accurate, context-aware responses in Portuguese.
+PharmaBula AI is an intelligent chatbot that helps users understand medication information from official Brazilian drug bulletins (*bulas*). It uses a **planner-based AI architecture** to analyze questions, execute targeted tool calls, and generate accurate, context-aware responses in Portuguese.
+
+All data is stored in MongoDB for fast, reliable access - no web scraping or external API calls.
 
 ### Key Features
 
 - 🤖 **AI-Powered Planning** - LLM analyzes questions and creates execution plans for tool usage
 - 🔍 **Multi-Tool System** - 6 specialized tools for drug data retrieval, section extraction, and interaction checking
-- 📦 **Real-Time ANVISA Integration** - Fetches official drug bulletins directly from Brazil's health regulatory agency
-- 💾 **Intelligent Caching** - MongoDB caching for PDF extractions to optimize performance
+- 💾 **MongoDB Database** - Pre-processed bula data with extracted sections for fast access
 - 🔄 **Automatic Fallback** - Multi-provider LLM chain ensures reliability when API quotas are exceeded
 - 👥 **Dual Mode** - Supports both patient and professional medication information modes
 - 💬 **Conversation History** - Context-aware responses using conversation memory
-- 📄 **PDF Viewer** - Built-in PDF viewer to visualize original ANVISA bulletins
 - 🐳 **Docker Ready** - Containerized deployment with Fly.io support
 
 ---
@@ -74,7 +74,6 @@ PharmaBula AI is an intelligent chatbot that helps users understand medication i
 | **Framework** | Express.js |
 | **Database** | MongoDB Atlas |
 | **LLM Providers** | HuggingFace, OpenAI, Anthropic, Google AI |
-| **External API** | ANVISA Bulário Eletrônico |
 | **PDF Processing** | pdf-parse |
 | **Deployment** | Fly.io + Docker |
 
@@ -197,7 +196,7 @@ Main chat endpoint for medication queries.
   "sources": [
     {
       "name": "Paracetamol",
-      "displayName": "Bula Paracetamol Richet - ANVISA",
+      "displayName": "Bula Paracetamol Richet - MongoDB",
       "pdfUrl": "https://consultas.anvisa.gov.br/..."
     }
   ],
@@ -220,17 +219,13 @@ Main chat endpoint for medication queries.
 
 ### GET `/api/pdf`
 
-PDF proxy endpoint for viewing ANVISA bulletins (avoids CORS issues).
+PDF proxy endpoint for viewing MongoDB bulletins (avoids CORS issues).
 
 **Query Parameters:**
-- `url` - The ANVISA PDF URL to stream
+- `url` - The MongoDB PDF URL to stream
 
 **Example:**
 ```
-GET /api/pdf?url=https://consultas.anvisa.gov.br/api/.../bula.pdf
-```
-
-**Response:** PDF file streamed directly from ANVISA
 
 ### POST `/api/evaluate`
 
@@ -255,8 +250,8 @@ Evaluate response quality using MCP judges.
 | `get_bula_data` | Get complete drug bulletin content |
 | `get_section` | Extract specific section (contraindications, posology, etc.) |
 | `check_interactions` | Check drug interactions between medications |
-| `find_generic_versions` | Find all registered versions (generics, brand names) |
-| `fetch_anvisa_bula` | Download and extract PDF from ANVISA |
+| `
+| `fetch_anvisa_bula` | Download and extract PDF from MongoDB |
 
 ---
 
@@ -298,7 +293,7 @@ const response = await fetch('/api/chat', {
 > **Tip for Portfolio:** Add 2-3 screenshots here showing:
 > 1. **Chat Interface** - User asking about medication side effects
 > 2. **Professional Mode** - Detailed pharmacokinetic information
-> 3. **ANVISA Integration** - Real-time data fetch from official source
+> 3. **MongoDB Integration** - Real-time data fetch from official source
 
 ### Example Screenshot Placesholders
 
@@ -308,7 +303,7 @@ const response = await fetch('/api/chat', {
 ![Professional Mode](./screenshots/professional-mode.png)
 *Figure 2: Detailed technical information for healthcare professionals*
 
-![ANVISA Integration](./screenshots/anvisa-integration.png)
+![MongoDB Integration](./screenshots/anvisa-integration.png)
 *Figure 3: Real-time PDF extraction from official Brazilian health authority*
 
 ---
@@ -316,7 +311,7 @@ const response = await fetch('/api/chat', {
 ## 🔐 Security & Compliance
 
 - **Data Privacy** - No personal health information stored permanently
-- **Official Sources Only** - All data from ANVISA's public API
+- **Official Sources Only** - All data from MongoDB's public API
 - **Rate Limiting** - Built-in throttling for external API calls
 - **Caching Strategy** - Intelligent caching reduces redundant PDF downloads
 
@@ -335,7 +330,7 @@ pharmabula-vercel/
 │   ├── llm_config.js     # LLM configuration loader
 │   ├── planner.js        # Query planner
 │   ├── tool_registry.js  # Tool definitions & handlers
-│   ├── anvisa.js         # ANVISA API client
+│   ├── anvisa.js         # MongoDB API client
 │   ├── db.js             # MongoDB connection
 │   └── prompt_manager.js # System prompt builder
 ├── public/
@@ -358,7 +353,7 @@ pharmabula-vercel/
 | **PDF Processing Timeout** | Optimized extraction with 9s timeout buffer |
 | **Context-Aware Responses** | Conversation history with MongoDB session storage |
 | **Portuguese Language Nuances** | Custom prompt engineering for Brazilian Portuguese medical terminology |
-| **Real-Time Data Accuracy** | Direct ANVISA API integration with intelligent caching |
+| **Real-Time Data Accuracy** | Direct MongoDB API integration with intelligent caching |
 | **CORS Issues with PDFs** | PDF proxy endpoint streams content server-side |
 | **Vercel Serverless Limits** | Migrated to Fly.io with Docker for better control |
 
@@ -411,7 +406,7 @@ MIT License - see LICENSE file for details
 
 ## 🙏 Acknowledgments
 
-- **ANVISA** - Brazilian Health Regulatory Agency for public API access
+- **MongoDB** - Brazilian Health Regulatory Agency for public API access
 - **HuggingFace** - Open-source LLM infrastructure
 - **Vercel** - Serverless deployment platform
 - **MongoDB** - Database for session management and caching

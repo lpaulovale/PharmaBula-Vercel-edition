@@ -1,7 +1,7 @@
 {
     "name": "bula-ia",
     "version": "1.0.0",
-    "description": "BulaIA - Assistente inteligente de medicamentos (Fly.io Edition)",
+    "description": "BulaIA - Assistente inteligente de medicamentos (MongoDB Only)",
     "private": true,
     "main": "server.js",
     "scripts": {
@@ -10,7 +10,6 @@
         "start": "node server.js",
         "mcp": "node mcp_server.js",
         "mcp:http": "MCP_HTTP=true node mcp_server.js",
-        "test:anvisa": "node scripts/test-anvisa.js",
         "docker:build": "docker build -t pharmabula-ai .",
         "docker:run": "docker run -p 8080:8080 --env-file .env pharmabula-ai",
         "fly:deploy": "fly deploy",
@@ -22,10 +21,7 @@
         "dotenv": "^17.3.1",
         "express": "^4.21.2",
         "mongodb": "^6.21.0",
-        "pdf-parse": "^1.1.1",
-        "playwright": "^1.40.0",
-        "playwright-extra": "^4.3.6",
-        "puppeteer-extra-plugin-stealth": "^2.11.2"
+        "pdf-parse": "^1.1.1"
     },
     "engines": {
         "node": ">=18.0.0"

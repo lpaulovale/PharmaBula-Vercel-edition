@@ -32,6 +32,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ detail: "Método não permitido." });
 
   const { message, mode = "patient", sessionId, model: runtimeModel } = req.body || {};
+  console.log("[API] Received mode:", mode, "from frontend");
   if (!message || message.length < 2) {
     return res.status(400).json({ detail: "A mensagem deve ter pelo menos 2 caracteres." });
   }
@@ -120,22 +121,22 @@ module.exports = async function handler(req, res) {
     }
 
     // =========================================
-    // FAIL CLEANLY if ANVISA tools returned errors
+    // FAIL CLEANLY if MongoDB tools returned errors
     // =========================================
-    const anvisaFailure = toolResults.find(r => 
-      (r.tool === "get_bula_data" || r.tool === "get_section") && 
-      r.found === false && 
+    const mongoFailure = toolResults.find(r =>
+      (r.tool === "get_bula_data" || r.tool === "get_section") &&
+      r.found === false &&
       r.error
     );
-    
-    if (anvisaFailure) {
+
+    if (mongoFailure) {
       return res.status(200).json({
-        response: anvisaFailure.error,
+        response: mongoFailure.error,
         sources: [],
         metadata: {
           mode,
           drugsDetected: plan.drugs || [],
-          anvisaError: true,
+          mongoError: true,
           toolsExecuted: toolLog,
         },
       });
@@ -207,68 +208,39 @@ module.exports = async function handler(req, res) {
       toolResults.map(r => ({
         tool: r.tool,
         found: r.found,
-        dataPdfUrl: r.data?.pdfUrl || null,
-        topLevelPdfUrl: r.pdfUrl || null,
+        hasData: !!r.data,
       }))
     );
 
     const sources = [];
     const seenNames = new Set();
-    let pdfBuffer = null;
-    let pdfBase64 = null;
 
     for (const r of toolResults) {
-      console.log('[DEBUG] chat.js processing toolResult:', { 
-        tool: r.tool, 
-        found: r.found, 
-        hasData: !!r.data,
-        dataPdfUrl: r.data?.pdfUrl,
-        topLevelPdfUrl: r.pdfUrl 
+      console.log('[DEBUG] chat.js processing toolResult:', {
+        tool: r.tool,
+        found: r.found,
+        hasData: !!r.data
       });
-      
-      if ((r.tool === "get_bula_data" || r.tool === "get_section" || r.tool === "fetch_anvisa_bula") && r.found && r.data) {
-        const name = r.tool === "get_section" ? `Bula ${r.data.name} - ANVISA (${r.data.section})` : `Bula ${r.data.name} - ANVISA`;
+
+      if ((r.tool === "get_bula_data" || r.tool === "get_section") && r.found && r.data) {
+        const name = r.tool === "get_section" ? `Bula ${r.data.name} (${r.data.section})` : `Bula ${r.data.name}`;
         if (!seenNames.has(name)) {
           seenNames.add(name);
-          
-          // Download PDF and convert to base64 if we have a URL
-          if (r.data.pdfUrl) {
-            try {
-              const response = await fetch(r.data.pdfUrl, {
-                headers: {
-                  "Accept": "application/pdf",
-                  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-                },
-              });
-              if (response.ok) {
-                const arrayBuffer = await response.arrayBuffer();
-                pdfBuffer = Buffer.from(arrayBuffer);
-                pdfBase64 = pdfBuffer.toString('base64');
-                console.log('[DEBUG] chat.js downloaded PDF, size:', pdfBuffer.length, 'bytes');
-              }
-            } catch (err) {
-              console.warn('[DEBUG] chat.js failed to download PDF:', err.message);
-            }
-          }
-          
           sources.push({
             name: r.data.name,
             displayName: name,
-            pdfUrl: r.data.pdfUrl || r.pdfUrl || null,
-            pdfBase64: pdfBase64,
           });
-          console.log('[DEBUG] chat.js added source:', { name, hasPdf: !!pdfBase64 });
+          console.log('[DEBUG] chat.js added source:', { name });
         }
       }
       if (r.tool === "search_medication" && r.resultsCount > 0) {
         for (const res of r.results) {
           const name = `Bula ${res.name} - ${res.company}`;
-          if (!seenNames.has(name) && res.pdfUrl) {
+          if (!seenNames.has(name)) {
             seenNames.add(name);
             sources.push({
               name: res.name,
               displayName: name,
-              pdfUrl: res.pdfUrl
             });
           }
         }
@@ -281,7 +253,6 @@ module.exports = async function handler(req, res) {
             sources.push({
               name: v.name,
               displayName: name,
-              pdfUrl: v.pdfUrl || null
             });
           }
         }
@@ -349,9 +320,6 @@ module.exports = async function handler(req, res) {
         model: llmResult?.config || null,
         usedFallback: llmResult?.usedFallback || false,
         plan: plan,
-        // Add PDF URL for auto-opening viewer
-        pdfUrl: sources.find(s => s.pdfUrl)?.pdfUrl || null,
-        drugName: sources.find(s => s.pdfUrl)?.name || null,
       },
     });
 
