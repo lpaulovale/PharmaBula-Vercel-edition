@@ -892,6 +892,8 @@
                     section === 'advertencias' ? 'Advertências' :
                     section.charAt(0).toUpperCase() + section.slice(1);
 
+                console.log('[DEBUG] Showing section:', sectionLabel, 'length:', text?.length);
+
                 html += `<div style="margin-bottom:20px;">`;
                 html += `<h4 style="color:var(--accent);margin-bottom:8px;font-size:15px;font-weight:600;">${sectionLabel}</h4>`;
                 html += `<div style="background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--border);font-size:13px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(text)}</div>`;

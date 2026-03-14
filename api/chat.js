@@ -98,6 +98,9 @@ module.exports = async function handler(req, res) {
     const toolResults = [];
     const toolLog = [];
 
+    // Debug: log planned sections
+    console.log('[DEBUG] Planned tools:', JSON.stringify(plan.tools, null, 2));
+
     if (plan.tools.length === 0) {
       console.log("[MCP] No tools to execute.");
     } else {
@@ -228,7 +231,10 @@ module.exports = async function handler(req, res) {
         const drugName = r.data.name;
         const sectionName = r.tool === "get_section" ? r.data.section : "completa";
         const displayName = `Bula ${drugName}`;
-        
+
+        // Debug: log what section was retrieved
+        console.log('[DEBUG] Storing extracted section:', { drugName, section: sectionName, contentLength: (r.data.content || r.data.textContent)?.length });
+
         // Store extracted data for popup
         if (!extractedData[drugName]) {
           extractedData[drugName] = {
@@ -322,6 +328,12 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    // Debug: log extracted data before sending
+    console.log('[DEBUG] Extracted data to send:', Object.keys(extractedData).reduce((acc, drug) => {
+      acc[drug] = Object.keys(extractedData[drug].sections);
+      return acc;
+    }, {}));
+
     return res.status(200).json({
       response: responseText,
       sources,
@@ -339,7 +351,6 @@ module.exports = async function handler(req, res) {
         extractedData: Object.keys(extractedData).length > 0 ? extractedData : null,
       },
     });
-
   } catch (err) {
     console.error("Chat handler error:", err);
     return res.status(500).json({ detail: "Erro interno do servidor.", error: err.message });
