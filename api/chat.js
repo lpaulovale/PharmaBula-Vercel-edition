@@ -179,6 +179,12 @@ module.exports = async function handler(req, res) {
 
     messages.push({ role: "user", content: message });
 
+    // Debug: log what's being sent to LLM
+    console.log('[DEBUG] LLM prompt documents length:', context?.length || 0);
+    if (context) {
+      console.log('[DEBUG] LLM prompt preview:', context.substring(0, 500));
+    }
+
     // =========================================
     // Step 5: Call LLM for response
     // =========================================
