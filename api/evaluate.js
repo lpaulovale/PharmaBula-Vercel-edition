@@ -11,7 +11,52 @@
 
 const { runAllJudges, runJudge, listJudges } = require("../lib/judges");
 const { getEvaluationsCollection } = require("../lib/db");
-const { classifyQuestion, getImplicitQuestions } = require("../lib/question_classifier");
+const { classifyQuestion } = require("../lib/question_classifier");
+const { routeTag } = require("../lib/section_router");
+
+// Map section names to topic judge names
+const SECTION_TO_TOPIC = {
+  'posologia': 'posologia',
+  'contraindicacao': 'contraindicacoes',
+  'reacoes': 'reacoes_adversas',
+};
+
+// Get implicit questions for topic judges
+function getImplicitQuestionsForTopics(topics) {
+  if (!topics || !Array.isArray(topics) || topics.length === 0) {
+    return [];
+  }
+  const topicToImplicitQuestions = {
+    'posologia': [
+      'dose padrão para adultos',
+      'frequência de administração',
+      'duração do tratamento',
+      'como tomar (administração)',
+      'o que fazer se esquecer uma dose'
+    ],
+    'contraindicacoes': [
+      'grupos contraindicados (grávidas, crianças, idosos)',
+      'condições de saúde que contraindicam',
+      'interações medicamentosas graves',
+      'interação com álcool',
+      'consequências se tomar apesar da contraindicação'
+    ],
+    'reacoes_adversas': [
+      'efeitos colaterais comuns (>10%)',
+      'efeitos colaterais graves',
+      'efeitos temporários vs permanentes',
+      'o que fazer em caso de efeitos adversos',
+      'sonolência e orientação para dirigir/operar máquinas'
+    ]
+  };
+  const implicitQuestions = [];
+  for (const topic of topics) {
+    if (topicToImplicitQuestions[topic]) {
+      implicitQuestions.push(...topicToImplicitQuestions[topic]);
+    }
+  }
+  return [...new Set(implicitQuestions)];
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -44,12 +89,15 @@ module.exports = async function handler(req, res) {
 
   if (topics.length === 0 && question) {
     const classification = await classifyQuestion(question);
-    topics = classification.topics || [];
+    // Use same routing as planner: tag → section → topic
+    const routing = routeTag(classification.tag);
+    const topic = SECTION_TO_TOPIC[routing.section] || null;
+    topics = topic ? [topic] : [];
     classificationMethod = classification.method || "llm";
-    console.log(`[EVALUATE] Classified question into topics: ${topics.join(", ")} (method: ${classificationMethod})`);
+    console.log(`[EVALUATE] Classification: tag=${classification.tag} → section=${routing.section} → topic=${topic}`);
   }
 
-  const implicitQuestions = getImplicitQuestions(topics);
+  const implicitQuestions = getImplicitQuestionsForTopics(topics);
 
   const context = {
     question: question || "",
