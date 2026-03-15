@@ -44,8 +44,8 @@ module.exports = async function handler(req, res) {
 
   if (topics.length === 0 && question) {
     const classification = await classifyQuestion(question);
-    topics = classification.topics;
-    classificationMethod = classification.method;
+    topics = classification.topics || [];
+    classificationMethod = classification.method || "llm";
     console.log(`[EVALUATE] Classified question into topics: ${topics.join(", ")} (method: ${classificationMethod})`);
   }
 
