@@ -756,8 +756,8 @@
                 </div>
             </div>
             <div class="footer-note">
-                <span class="fw-badge">MCP + LLAMA 3.1</span>
-                Dados de bulas ANVISA. Confirme com um profissional de saúde.
+                <span class="fw-badge" id="model-badge">MCP + LLAMA 3.1</span>
+                <span id="model-note">Dados de bulas ANVISA. Confirme com um profissional de saúde.</span>
             </div>
         </div>
     </main>
@@ -1035,7 +1035,24 @@
             if (!res.ok) { const err=await res.json(); throw new Error(err.detail||'Erro'); }
             const data = await res.json();
             const responseText = data.response || '';
-            
+
+            // Update model badge from API response
+            if (data.metadata?.model) {
+                const modelBadge = document.getElementById('model-badge');
+                if (modelBadge) {
+                    const model = data.metadata.model;
+                    let displayName = model.model || model.toString();
+                    // Shorten long model names
+                    if (displayName.includes('/')) {
+                        displayName = displayName.split('/').pop();
+                    }
+                    if (displayName.length > 20) {
+                        displayName = displayName.substring(0, 18) + '...';
+                    }
+                    modelBadge.textContent = 'MCP + ' + displayName.toUpperCase();
+                }
+            }
+
             // Show fallback notification if primary model failed
             if (data.metadata?.usedFallback) {
                 const fallbackNotice = document.createElement('div');
