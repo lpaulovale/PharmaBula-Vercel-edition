@@ -1157,7 +1157,11 @@
                     const panelId = 'judge-' + Date.now();
                     msgText.insertAdjacentHTML('beforeend', `<div class="judge-panel" id="${panelId}"><div class="judge-loading"><div class="spinner"></div>Avaliando com 4 juízes MCP…</div></div>`);
                     fetch(API_BASE+'/evaluate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({question:message, response:responseText, documents:data.metadata?.documents||'', mode:currentMode, sessionId}) })
-                    .then(r=>r.json()).then(evalData => {
+                    .then(r => {
+                        if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+                        return r.json();
+                    })
+                    .then(evalData => {
                         console.log('[JUDGE DEBUG] evalData:', evalData);
                         console.log('[JUDGE DEBUG] judges:', evalData.judges);
                         console.log('[JUDGE DEBUG] aggregate_score:', evalData.aggregate_score);
@@ -1223,7 +1227,13 @@
                         }
                         panel.innerHTML=`<div class="judge-toggle" onclick="this.classList.toggle('open');this.nextElementSibling.classList.toggle('open')"><i data-lucide="chevron-right"></i><span class="judge-toggle-label">Avaliação MCP</span><span class="judge-aggregate ${aggCls}">${agg!==null?agg+'/100':'—'}</span></div><div class="judge-details">${rows}</div>`;
                         lucide.createIcons();
-                    }).catch(err => { const p=document.getElementById(panelId); if(p) p.remove(); });
+                    }).catch(err => {
+                        console.error('[JUDGE] Fetch error:', err);
+                        const p=document.getElementById(panelId);
+                        if(p) {
+                            p.innerHTML = `<div class="judge-loading" style="color:#ef8080">⚠️ Avaliação indisponível: ${err.message}</div>`;
+                        }
+                    });
                 }
             }
         } catch (err) { removeLoading(); addMessage(`Erro: ${err.message}`,'error'); }
