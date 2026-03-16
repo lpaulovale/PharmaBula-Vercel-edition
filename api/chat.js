@@ -20,10 +20,79 @@ const { executeTool, listTools } = require("../lib/tool_registry");
 const { getSystemPrompt, buildContextPrompt, getNoDataPrompt, getResponsePrompt } = require("../lib/prompt_manager");
 const { planQuery } = require("../lib/planner");
 const { chat, chatWithModel } = require("../lib/llm_client");
+const { tagAndFilter, groupByTag } = require("../lib/tagger");
 
 const MAX_HISTORY_MESSAGES = 6;
 
+/**
+ * Format a tag as a readable title.
+ * @param {string} tag - Tag name (e.g., "dosage_adult", "side_effects_dermatologic")
+ * @returns {string} Readable title
+ */
+function formatTagAsTitle(tag) {
+  const tagTitles = {
+    // Dosage
+    'dosage_adult': 'Posologia para Adultos',
+    'dosage_pediatric': 'Posologia para Crianças',
+    'dosage_elderly': 'Posologia para Idosos',
+    'dosage_renal': 'Dosagem para Insuficiência Renal',
+    'dosage_hepatic': 'Dosagem para Insuficiência Hepática',
+    'dosage_diabetic': 'Informações para Diabéticos',
+    'administration': 'Como Administrar',
+    'max_dose': 'Dose Máxima',
+    'age_restriction': 'Restrições de Idade',
+    
+    // Side effects by category
+    'side_effects_hypersensitivity': 'Reações de Hipersensibilidade',
+    'side_effects_hematologic': 'Reações Hematológicas',
+    'side_effects_dermatologic': 'Reações da Pele',
+    'side_effects_gastrointestinal': 'Reações Gastrointestinais',
+    'side_effects_cardiovascular': 'Reações Cardiovasculares',
+    'side_effects_hepatic': 'Reações Hepáticas',
+    'side_effects_renal': 'Reações Renais',
+    'side_effects_neurologic': 'Reações Neurológicas',
+    'side_effects_other': 'Outras Reações',
+    
+    // Warnings
+    'warning_pregnancy': 'Uso em Grávidas',
+    'warning_lactation': 'Uso durante Amamentação',
+    'warning_alcohol': 'Interação com Álcool',
+    'warning_driving': 'Direção e Operação de Máquinas',
+    'warning_children': 'Uso em Crianças',
+    'warning_elderly': 'Uso em Idosos',
+    'warning_prolonged_use': 'Uso Prolongado',
+    'warning_diabetic': 'Atenção para Diabéticos',
+    'warning_renal': 'Atenção para Pacientes Renais',
+    'warning_hepatic': 'Atenção para Pacientes Hepáticos',
+    
+    // Contraindications
+    'contraindication_allergy': 'Alergias',
+    'contraindication_disease': 'Doenças Contraindicadas',
+    'contraindication_age': 'Faixas Etárias Contraindicadas',
+    'contraindication_pregnancy': 'Uso na Gravidez',
+  };
+  
+  // Exact match
+  if (tagTitles[tag]) {
+    return tagTitles[tag];
+  }
+  
+  // Handle weight-based tags (dosage_pediatric_weight_5_8kg)
+  const weightMatch = tag.match(/dosage_pediatric_weight_(\d+)_(\d+)kg/);
+  if (weightMatch) {
+    return `${weightMatch[1]} a ${weightMatch[2]} kg`;
+  }
+  
+  // Generic fallback - capitalize and replace underscores
+  return tag
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
 module.exports = async function handler(req, res) {
+  const totalStartTime = Date.now();
+  
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -32,7 +101,7 @@ module.exports = async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).json({ detail: "Método não permitido." });
 
   const { message, mode = "patient", sessionId, model: runtimeModel } = req.body || {};
-  console.log("[API] Received mode:", mode, "from frontend");
+  console.log(`[API] Received mode: ${mode}, message length: ${message.length}`);
   if (!message || message.length < 2) {
     return res.status(400).json({ detail: "A mensagem deve ter pelo menos 2 caracteres." });
   }
@@ -156,9 +225,51 @@ module.exports = async function handler(req, res) {
     }
 
     // =========================================
-    // Step 4: Build prompt via prompt_manager
+    // Step 4: Tag and filter content (NEW)
     // =========================================
-    const context = buildContextPrompt(toolResults);
+    let taggedContext = null;
+    const taggerStartTime = Date.now();
+
+    if (toolResults.length > 0 && plan.tags && plan.tags.length > 0) {
+      console.log('[Tagger] Tagging and filtering content for tags:', plan.tags);
+
+      const allTaggedSentences = [];
+
+      for (const result of toolResults) {
+        if ((result.tool === 'get_section' || result.tool === 'get_bula_data') && result.found && result.data) {
+          const content = result.data.content || result.data.textContent || '';
+          const section = result.data.section || 'bula_completa';
+
+          if (content && content.length > 50) {
+            try {
+              const tagged = await tagAndFilter(content, section, plan.tags);
+              allTaggedSentences.push(...tagged);
+            } catch (err) {
+              console.warn(`[Tagger] Failed for section ${section}:`, err.message);
+            }
+          }
+        }
+      }
+
+      if (allTaggedSentences.length > 0) {
+        // Group by tag for organized output
+        const grouped = groupByTag(allTaggedSentences);
+
+        // Build formatted context from tagged sentences
+        taggedContext = Object.entries(grouped).map(([tag, sentences]) => {
+          const title = formatTagAsTitle(tag);
+          return `## ${title}\n${sentences.map(s => '• ' + s).join('\n')}`;
+        }).join('\n\n');
+
+        const taggerElapsed = Date.now() - taggerStartTime;
+        console.log(`[Tagger] Total: ${taggerElapsed}ms, ${Object.keys(grouped).length} sections, ${allTaggedSentences.length} sentences`);
+      }
+    }
+
+    // =========================================
+    // Step 5: Build prompt via prompt_manager
+    // =========================================
+    const context = taggedContext || buildContextPrompt(toolResults);
 
     // Debug: log what sections are in the context
     console.log('[DEBUG] Context sections:', toolResults
@@ -194,9 +305,10 @@ module.exports = async function handler(req, res) {
     // =========================================
     // Step 5: Call LLM for response
     // =========================================
+    const responseStartTime = Date.now();
     let llmResult;
     let llmError = null;
-    
+
     try {
       if (runtimeModel) {
         let modelOptions = {};
@@ -211,8 +323,12 @@ module.exports = async function handler(req, res) {
         // Limit tokens to prevent runaway generation
         llmResult = await chat(messages, { temperature: 0.3, maxTokens: 512 });
       }
+      
+      const responseElapsed = Date.now() - responseStartTime;
+      console.log(`[Response LLM] Generated ${llmResult.text?.length || 0} chars in ${responseElapsed}ms`);
     } catch (llmErr) {
-      console.error("LLM call failed:", llmErr.message);
+      const responseElapsed = Date.now() - responseStartTime;
+      console.error(`[Response LLM] Failed after ${responseElapsed}ms:`, llmErr.message);
       llmError = llmErr;
     }
     
@@ -398,5 +514,8 @@ module.exports = async function handler(req, res) {
   } catch (err) {
     console.error("Chat handler error:", err);
     return res.status(500).json({ detail: "Erro interno do servidor.", error: err.message });
+  } finally {
+    const totalTime = Date.now() - totalStartTime;
+    console.log(`[API] Total request time: ${totalTime}ms`);
   }
 };
