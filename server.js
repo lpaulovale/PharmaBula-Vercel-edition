@@ -16,6 +16,7 @@ const cors = require('cors');
 // Import API handlers
 const chatHandler = require('./api/chat');
 const evaluateHandler = require('./api/evaluate');
+const modelsHandler = require('./api/models');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -41,6 +42,7 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+app.get('/api/models', modelsHandler);
 app.post('/api/chat', chatHandler);
 app.post('/api/evaluate', evaluateHandler);
 

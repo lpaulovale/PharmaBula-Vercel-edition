@@ -383,7 +383,7 @@
         }
         #message-input::placeholder { color: var(--text3); }
 
-        .input-actions { display: flex; align-items: center; padding: 5px 4px 5px 8px; }
+        .input-actions { display: flex; align-items: center; gap: 6px; padding: 5px 4px 5px 8px; }
         .send-btn {
             width: 38px; height: 38px;
             border-radius: 11px; border: none;
@@ -631,6 +631,163 @@
             background: var(--accent-hover);
         }
 
+        /* ── Model Selector (inside input box) ── */
+        .model-selector-wrap {
+            position: relative;
+            display: flex; align-items: center;
+        }
+        .model-selector-btn {
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 12px;
+            background: var(--bg3);
+            border: 1px solid var(--border);
+            border-radius: var(--r-pill);
+            color: var(--text2);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 12px; font-weight: 500;
+            cursor: pointer; transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .model-selector-btn:hover { background: var(--surface2); color: var(--text); border-color: var(--border2); }
+        .model-selector-btn .model-ico {
+            width: 18px; height: 18px;
+            border-radius: 5px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(168,85,247,0.12); color: #a855f7;
+        }
+        .model-selector-btn .model-ico svg { width: 11px; height: 11px; stroke-width: 2.2; }
+        .model-selector-btn .chevron-ico { color: var(--text3); }
+        .model-selector-btn .chevron-ico svg { width: 13px; height: 13px; stroke-width: 2; transition: transform 0.2s; }
+        .model-selector-btn.open .chevron-ico svg { transform: rotate(180deg); }
+
+        .model-dropdown {
+            position: absolute; bottom: calc(100% + 10px); left: 0;
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--r);
+            padding: 6px; min-width: 300px;
+            box-shadow: var(--shadow); z-index: 200; display: none;
+        }
+        .model-dropdown.open { display: block; animation: popUp 0.15s ease; }
+        @keyframes popUp {
+            from { opacity: 0; transform: translateY(8px) scale(0.97); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        .model-option {
+            display: flex; align-items: center; gap: 10px;
+            padding: 9px 12px; border-radius: var(--r-sm);
+            cursor: pointer; transition: background 0.12s;
+        }
+        .model-option:hover { background: var(--bg3); }
+        .model-option.active { background: rgba(168,85,247,0.1); }
+
+        .model-option-icon {
+            width: 32px; height: 32px; border-radius: 9px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+            background: rgba(168,85,247,0.12); color: #a855f7;
+        }
+        .model-option-icon svg { width: 16px; height: 16px; stroke-width: 1.9; }
+        .model-option-icon.fallback { background: rgba(234,179,8,0.12); color: #eab308; }
+
+        .model-option-text { flex: 1; min-width: 0; }
+        .model-option-title { font-size: 13px; font-weight: 600; color: var(--text); }
+        .model-option-desc  { font-size: 11px; color: var(--text3); margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .model-option-badge {
+            font-size: 9.5px; font-weight: 600;
+            padding: 2px 7px; border-radius: var(--r-pill);
+            text-transform: uppercase; letter-spacing: 0.04em;
+            flex-shrink: 0;
+        }
+        .model-option-badge.primary  { background: rgba(168,85,247,0.15); color: #a855f7; }
+        .model-option-badge.fallback { background: rgba(234,179,8,0.13);  color: #eab308; }
+
+        .model-check-ico { opacity: 0; flex-shrink: 0; }
+        .model-check-ico svg { width: 15px; height: 15px; stroke-width: 2.5; }
+        .model-option.active .model-check-ico { opacity: 1; color: #a855f7; }
+
+        .model-auto-option {
+            display: flex; align-items: center; gap: 10px;
+            padding: 9px 12px; border-radius: var(--r-sm);
+            cursor: pointer; transition: background 0.12s;
+            border-bottom: 1px solid var(--border); margin-bottom: 4px;
+        }
+        .model-auto-option:hover { background: var(--bg3); }
+        .model-auto-option.active { background: rgba(14,165,122,0.1); }
+        .model-auto-option.active .model-check-ico { opacity: 1; color: var(--accent); }
+
+        /* input-box layout with model selector */
+        .input-top-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 0 0;
+        }
+
+        /* ── Extracted Data (Fonte Bula) Modal ── */
+        .extracted-modal-content {
+            max-width: 700px; width: 90vw;
+            max-height: 85vh;
+            background: var(--surface);
+            border: 1px solid var(--border2);
+            border-radius: var(--r);
+            box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            animation: popIn 0.2s ease;
+        }
+        .extracted-modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 22px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+        }
+        .extracted-modal-header h3 {
+            font-family: 'Nunito', sans-serif;
+            font-size: 17px; font-weight: 700;
+            color: var(--text);
+            display: flex; align-items: center; gap: 10px;
+        }
+        .extracted-modal-header h3 .em-icon {
+            width: 32px; height: 32px; border-radius: 10px;
+            background: var(--accent-soft); color: var(--accent);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .extracted-modal-header h3 .em-icon svg { width: 17px; height: 17px; stroke-width: 2; }
+        .extracted-modal-body {
+            flex: 1; overflow-y: auto;
+            padding: 20px 22px;
+        }
+        .extracted-section {
+            margin-bottom: 20px;
+        }
+        .extracted-section:last-child { margin-bottom: 0; }
+        .extracted-section-title {
+            font-family: 'Nunito', sans-serif;
+            font-size: 14px; font-weight: 700;
+            color: var(--accent);
+            margin-bottom: 10px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .extracted-section-title::before {
+            content: '';
+            width: 4px; height: 18px;
+            border-radius: 2px;
+            background: var(--accent);
+            flex-shrink: 0;
+        }
+        .extracted-section-content {
+            background: var(--bg2);
+            border: 1px solid var(--border);
+            border-radius: var(--r-sm);
+            padding: 14px 16px;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: 13.5px;
+            line-height: 1.7;
+            color: var(--text2);
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
         /* ── Scrollbar ── */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -750,6 +907,14 @@
             <div class="input-box">
                 <textarea id="message-input" placeholder="Pergunte sobre medicamentos…" rows="1"></textarea>
                 <div class="input-actions">
+                    <div class="model-selector-wrap">
+                        <button class="model-selector-btn" id="model-selector-btn" title="Selecionar modelo">
+                            <span class="model-ico"><i data-lucide="cpu"></i></span>
+                            <span id="model-selector-label">Auto</span>
+                            <span class="chevron-ico"><i data-lucide="chevron-down"></i></span>
+                        </button>
+                        <div class="model-dropdown" id="model-dropdown"></div>
+                    </div>
                     <button class="send-btn" id="send-btn" title="Enviar">
                         <i data-lucide="arrow-up"></i>
                     </button>
@@ -784,14 +949,17 @@
 
 <!-- Extracted Data Popup Modal -->
 <div class="pdf-modal-overlay" id="extracted-data-modal" style="z-index: 10001;">
-    <div class="pdf-modal-content" style="max-width: 700px; max-height: 80vh; overflow-y: auto;">
-        <div class="pdf-modal-header" style="border-bottom: 1px solid var(--border); margin-bottom: 16px;">
-            <span class="pdf-modal-title" id="extracted-data-title">Dados Extraídos</span>
+    <div class="extracted-modal-content">
+        <div class="extracted-modal-header">
+            <h3>
+                <span class="em-icon"><i data-lucide="file-text"></i></span>
+                <span id="extracted-data-title">Dados Extraídos</span>
+            </h3>
             <button class="pdf-modal-close" onclick="closeExtractedDataPopup()" title="Fechar">
                 <i data-lucide="x" style="width:18px;height:18px;"></i>
             </button>
         </div>
-        <div id="extracted-data-content" style="padding: 8px 0;">
+        <div class="extracted-modal-body" id="extracted-data-content">
             <!-- Content will be inserted here -->
         </div>
     </div>
@@ -803,8 +971,75 @@
 
     const API_BASE = '/api';
     let currentMode = 'patient', hasMessages = false;
+    let selectedModel = null; // null = auto (primary with fallback chain)
     let sessionId = sessionStorage.getItem('bulaia_session');
     if (!sessionId) { sessionId = 'sess_' + crypto.randomUUID(); sessionStorage.setItem('bulaia_session', sessionId); }
+
+    // ── Model Selector ──
+    (async function loadModels() {
+        try {
+            const res = await fetch(`${API_BASE}/models`);
+            if (!res.ok) return;
+            const data = await res.json();
+            const dd = document.getElementById('model-dropdown');
+            if (!dd || !data.models?.length) return;
+
+            let html = '';
+            // Auto option
+            html += `<div class="model-auto-option active" data-model-id="" data-provider="">`;
+            html += `<div class="model-option-icon" style="background:var(--accent-soft);color:var(--accent);"><i data-lucide="sparkles"></i></div>`;
+            html += `<div class="model-option-text"><div class="model-option-title">Automático</div><div class="model-option-desc">Usa primário com fallback</div></div>`;
+            html += `<span class="model-check-ico"><i data-lucide="check"></i></span>`;
+            html += `</div>`;
+
+            for (const m of data.models) {
+                const isFb = m.purpose === 'fallback';
+                html += `<div class="model-option" data-model-id="${m.id}" data-provider="${m.provider}">`;
+                html += `<div class="model-option-icon ${isFb ? 'fallback' : ''}"><i data-lucide="${isFb ? 'shield' : 'cpu'}"></i></div>`;
+                html += `<div class="model-option-text"><div class="model-option-title">${m.label}</div><div class="model-option-desc">${m.providerName} · ${m.id.length > 35 ? m.id.substring(0,33)+'…' : m.id}</div></div>`;
+                html += `<span class="model-option-badge ${m.purpose}">${m.purpose === 'primary' ? 'Primário' : 'Fallback'}</span>`;
+                html += `<span class="model-check-ico"><i data-lucide="check"></i></span>`;
+                html += `</div>`;
+            }
+            dd.innerHTML = html;
+            lucide.createIcons();
+
+            // Click handler for model options
+            dd.querySelectorAll('.model-option, .model-auto-option').forEach(opt => {
+                opt.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    dd.querySelectorAll('.model-option, .model-auto-option').forEach(x => x.classList.remove('active'));
+                    opt.classList.add('active');
+                    const mid = opt.dataset.modelId;
+                    const prov = opt.dataset.provider;
+                    if (!mid) {
+                        selectedModel = null;
+                        document.getElementById('model-selector-label').textContent = 'Auto';
+                    } else {
+                        selectedModel = { provider: prov, model: mid };
+                        // Get shorter label
+                        const titleEl = opt.querySelector('.model-option-title');
+                        document.getElementById('model-selector-label').textContent = titleEl ? titleEl.textContent : mid;
+                    }
+                    dd.classList.remove('open');
+                });
+            });
+        } catch (e) {
+            console.warn('[Models] Could not load models:', e.message);
+        }
+    })();
+
+    // Model dropdown toggle
+    document.getElementById('model-selector-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const dd = document.getElementById('model-dropdown');
+        dd.classList.toggle('open');
+        // Close mode dropdown if open
+        document.getElementById('mode-dropdown').classList.remove('open');
+    });
+    document.addEventListener('click', () => {
+        document.getElementById('model-dropdown').classList.remove('open');
+    });
 
     // Theme
     const themeToggle = document.getElementById('theme-toggle');
@@ -877,7 +1112,7 @@
         const title = document.getElementById('extracted-data-title');
         const content = document.getElementById('extracted-data-content');
 
-        title.textContent = `Dados Extraídos - ${drugName}`;
+        title.textContent = `Bula — ${drugName}`;
 
         try {
             const sections = JSON.parse(decodeURIComponent(sectionsJson));
@@ -892,11 +1127,9 @@
                     section === 'advertencias' ? 'Advertências' :
                     section.charAt(0).toUpperCase() + section.slice(1);
 
-                console.log('[DEBUG] Showing section:', sectionLabel, 'length:', text?.length);
-
-                html += `<div style="margin-bottom:20px;">`;
-                html += `<h4 style="color:var(--accent);margin-bottom:8px;font-size:15px;font-weight:600;">${sectionLabel}</h4>`;
-                html += `<div style="background:var(--bg2);padding:12px;border-radius:8px;border:1px solid var(--border);font-size:13px;line-height:1.6;white-space:pre-wrap;">${escapeHtml(text)}</div>`;
+                html += `<div class="extracted-section">`;
+                html += `<div class="extracted-section-title">${sectionLabel}</div>`;
+                html += `<div class="extracted-section-content">${escapeHtml(text)}</div>`;
                 html += `</div>`;
             }
 
@@ -905,7 +1138,7 @@
             lucide.createIcons();
         } catch (err) {
             console.error('Error parsing sections:', err);
-            content.innerHTML = `<div style="color:#ef4444;">Erro ao carregar dados: ${err.message}</div>`;
+            content.innerHTML = `<div style="color:#ef4444;padding:16px;">Erro ao carregar dados: ${err.message}</div>`;
             modal.classList.add('active');
         }
     }
@@ -1030,7 +1263,7 @@
         input.value=''; input.style.height='auto'; updateSend();
         sendBtn.disabled=true; addLoading();
         try {
-            const res = await fetch(`${API_BASE}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message, mode:currentMode, sessionId}) });
+            const res = await fetch(`${API_BASE}/chat`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({message, mode:currentMode, sessionId, model: selectedModel}) });
             removeLoading();
             if (!res.ok) { const err=await res.json(); throw new Error(err.detail||'Erro'); }
             const data = await res.json();
