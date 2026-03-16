@@ -171,6 +171,7 @@ module.exports = async function handler(req, res) {
       documents: context || getNoDataPrompt(),
       topics: plan.topics || [],
       implicitQuestions: plan.implicit_questions || [],
+      tags: plan.tags || [],
     });
 
     const messages = [{ role: "system", content: systemPrompt }];
