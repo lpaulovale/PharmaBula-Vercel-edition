@@ -100,6 +100,7 @@ module.exports = async function handler(req, res) {
 
     // Debug: log planned sections
     console.log('[DEBUG] Planned tools:', JSON.stringify(plan.tools, null, 2));
+    console.log('[DEBUG] Plan fallbacks:', JSON.stringify(plan.fallbacks, null, 2));
 
     if (plan.tools.length === 0) {
       console.log("[MCP] No tools to execute.");
@@ -113,11 +114,15 @@ module.exports = async function handler(req, res) {
           toolLog.push({ tool: toolCall.name, args: toolCall.args });
 
           // Check if we need to use fallback (section not found)
-          if (plan.fallback && result.found === false && toolCall.name === 'get_section') {
-            console.log(`[MCP] Section not found, falling back to ${plan.fallback.name}`);
-            result = await executeTool(plan.fallback.name, plan.fallback.args);
-            toolLog.push({ tool: plan.fallback.name, args: plan.fallback.args, fallback: true });
-            result._usedFallback = true;
+          // Look for matching fallback in plan.fallbacks array
+          if (result.found === false && toolCall.name === 'get_section') {
+            const fallbackInfo = plan.fallbacks?.find(f => f.section === toolCall.args?.section);
+            if (fallbackInfo) {
+              console.log(`[MCP] Section not found (${toolCall.args.section}), falling back to ${fallbackInfo.fallback}`);
+              result = await executeTool(fallbackInfo.fallback, { drug_name: toolCall.args.drug_name, mode: toolCall.args.mode });
+              toolLog.push({ tool: fallbackInfo.fallback, args: { drug_name: toolCall.args.drug_name, mode: toolCall.args.mode }, fallback: true });
+              result._usedFallback = true;
+            }
           }
 
           toolResults.push(result);
