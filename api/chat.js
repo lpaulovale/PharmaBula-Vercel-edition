@@ -258,14 +258,23 @@ module.exports = async function handler(req, res) {
         // Build formatted context from tagged sentences
         taggedContext = Object.entries(grouped).map(([tag, sentences]) => {
           const title = formatTagAsTitle(tag);
-          // Format each sentence: capitalize first letter and add bullet
+          
+          // Use bullets only for list-like content (dosages, independent items)
+          // Use paragraphs for narrative/explanatory text
+          const useBullets = tag.includes('dosage') || 
+                             tag.includes('contraindication') ||
+                             tag.includes('administration') ||
+                             tag.includes('max_dose');
+          
           const formattedSentences = sentences.map(s => {
             const trimmed = s.trim();
-            // Capitalize first letter if lowercase
             const capitalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-            return `• ${capitalized}`;
+            return useBullets ? `• ${capitalized}` : capitalized;
           });
-          return `## ${title}\n${formattedSentences.join('\n')}`;
+          
+          // Join sentences
+          const separator = useBullets ? '\n\n' : '\n\n';
+          return `## ${title}\n\n${formattedSentences.join(separator)}`;
         }).join('\n\n');
 
         const taggerElapsed = Date.now() - taggerStartTime;
