@@ -89,12 +89,13 @@ module.exports = async function handler(req, res) {
 
   if (topics.length === 0 && question) {
     const classification = await classifyQuestion(question);
-    // Use same routing as planner: tag → section → topic
-    const routing = routeTag(classification.tag);
-    const topic = SECTION_TO_TOPIC[routing.section] || null;
+    // Use same routing as planner: tags[0] → section → topic (use first tag for evaluation)
+    const firstTag = classification.tags && classification.tags.length > 0 ? classification.tags[0] : null;
+    const routing = firstTag ? routeTag(firstTag) : { tool: 'get_bula_data', section: null, fallback: null };
+    const topic = routing.section ? (SECTION_TO_TOPIC[routing.section] || null) : null;
     topics = topic ? [topic] : [];
     classificationMethod = classification.method || "llm";
-    console.log(`[EVALUATE] Classification: tag=${classification.tag} → section=${routing.section} → topic=${topic}`);
+    console.log(`[EVALUATE] Classification: tag=${firstTag} → section=${routing.section} → topic=${topic}`);
   }
 
   const implicitQuestions = getImplicitQuestionsForTopics(topics);
