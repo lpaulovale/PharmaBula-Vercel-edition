@@ -182,4 +182,4 @@ node test-mongodb.js
 
 ## Security Note
 
-**Never commit your MongoDB credentials!** Use environment variables or a `.env` file (which is already in `.gitignore`).
+**Never commit your MongoDB credentials!** Usee environment variables or a `.env` file (which is already in `.gitignore`).
