@@ -258,7 +258,14 @@ module.exports = async function handler(req, res) {
         // Build formatted context from tagged sentences
         taggedContext = Object.entries(grouped).map(([tag, sentences]) => {
           const title = formatTagAsTitle(tag);
-          return `## ${title}\n${sentences.join('\n')}`;
+          // Format each sentence: capitalize first letter and add bullet
+          const formattedSentences = sentences.map(s => {
+            const trimmed = s.trim();
+            // Capitalize first letter if lowercase
+            const capitalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+            return `• ${capitalized}`;
+          });
+          return `## ${title}\n${formattedSentences.join('\n')}`;
         }).join('\n\n');
 
         const taggerElapsed = Date.now() - taggerStartTime;
