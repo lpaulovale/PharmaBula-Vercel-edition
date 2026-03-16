@@ -258,7 +258,7 @@ module.exports = async function handler(req, res) {
         // Build formatted context from tagged sentences
         taggedContext = Object.entries(grouped).map(([tag, sentences]) => {
           const title = formatTagAsTitle(tag);
-          return `## ${title}\n${sentences.map(s => '• ' + s).join('\n')}`;
+          return `## ${title}\n${sentences.join('\n')}`;
         }).join('\n\n');
 
         const taggerElapsed = Date.now() - taggerStartTime;
