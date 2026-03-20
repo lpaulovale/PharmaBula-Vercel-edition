@@ -1,6 +1,6 @@
-# PharmaBula AI 🧪💊
+# FarmaIA 🧪💊
 
-**BulaIA** - An intelligent medication assistant powered by AI, built with a planner-based architecture and MongoDB database.
+**FarmaIA** - An intelligent medication assistant powered by AI, built with a planner-based architecture and MongoDB database.
 
 ![Node.js](https://img.shields.io/badge/Node.js-18+-green?style=flat&logo=node.js)
 ![Fly.io](https://img.shields.io/badge/Fly.io-Deployed-black?style=flat&logo=fly.io)
@@ -12,7 +12,7 @@
 
 ## 📋 Overview
 
-PharmaBula AI is an intelligent chatbot that helps users understand medication information from official Brazilian drug bulletins (*bulas*). It uses a **planner-based AI architecture** to analyze questions, execute targeted tool calls, and generate accurate, context-aware responses in Portuguese.
+FarmaIA is an intelligent chatbot that helps users understand medication information from official Brazilian drug bulletins (*bulas*). It uses a **planner-based AI architecture** to analyze questions, execute targeted tool calls, and generate accurate, context-aware responses in Portuguese.
 
 All data is stored in MongoDB for fast, reliable access - no web scraping or external API calls.
 
@@ -94,7 +94,7 @@ All data is stored in MongoDB for fast, reliable access - no web scraping or ext
 ```bash
 # Clone the repository
 git clone <your-repo-url>
-cd pharmabula-vercel
+cd farmaia-vercel
 
 # Install dependencies
 npm install
@@ -119,7 +119,7 @@ FALLBACK_MODEL=meta-llama/Llama-3.1-8B-Instruct:cerebras
 FALLBACK_API_KEY=your_huggingface_token
 
 # MongoDB Atlas
-MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/pharmabula
+MONGODB_URI=mongodb+srv://user:pass@cluster.mongodb.net/farmaia
 
 # Server Configuration (Fly.io)
 PORT=8080
@@ -320,7 +320,7 @@ const response = await fetch('/api/chat', {
 ## 🧩 Project Structure
 
 ```
-pharmabula-vercel/
+farmaia-vercel/
 ├── api/
 │   ├── chat.js           # Main chat endpoint
 │   ├── evaluate.js       # Response evaluation endpoint
@@ -377,7 +377,7 @@ This is a portfolio project. Feel free to fork and experiment!
 
 ```bash
 # Fork the repo
-git clone https://github.com/yourusername/pharmabula-vercel.git
+git clone https://github.com/yourusername/farmaia-vercel.git
 
 # Create a feature branch
 git checkout -b feature/amazing-feature
@@ -423,6 +423,6 @@ For questions or collaboration opportunities, reach out via [your email] or open
 
 **Made with ❤️ for better healthcare accessibility**
 
-[⬆ Back to Top](#pharmabula-ai-)
+[⬆ Back to Top](#farmaia-)
 
 </div>

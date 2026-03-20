@@ -1,4 +1,4 @@
-# MongoDB Setup for BulaIA MCP Server
+# MongoDB Setup for FarmaIA MCP Server
 
 ## Overview
 

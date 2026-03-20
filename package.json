@@ -1,7 +1,7 @@
 {
-    "name": "bula-ia",
+    "name": "farma-ia",
     "version": "1.0.0",
-    "description": "BulaIA - Assistente inteligente de medicamentos (MongoDB Only)",
+    "description": "FarmaIA - Assistente inteligente de medicamentos (MongoDB Only)",
     "private": true,
     "main": "server.js",
     "scripts": {

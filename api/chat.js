@@ -260,21 +260,47 @@ module.exports = async function handler(req, res) {
           const title = formatTagAsTitle(tag);
           
           // Use bullets only for list-like content (dosages, independent items)
-          // Use paragraphs for narrative/explanatory text
           const useBullets = tag.includes('dosage') || 
                              tag.includes('contraindication') ||
                              tag.includes('administration') ||
                              tag.includes('max_dose');
           
+          // Capitalize each sentence
           const formattedSentences = sentences.map(s => {
             const trimmed = s.trim();
-            const capitalized = trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
-            return useBullets ? `• ${capitalized}` : capitalized;
+            return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
           });
           
-          // Join sentences
-          const separator = useBullets ? '\n\n' : '\n\n';
-          return `## ${title}\n\n${formattedSentences.join(separator)}`;
+          if (useBullets) {
+            // Bullet list format
+            const bullets = formattedSentences.map(s => `• ${s}`);
+            return `## ${title}\n\n${bullets.join('\n\n')}`;
+          } else {
+            // Group related sentences into short paragraphs (2-4 sentences each)
+            const paragraphs = [];
+            let currentParagraph = [];
+            
+            for (const sentence of formattedSentences) {
+              currentParagraph.push(sentence);
+              
+              // Start new paragraph after 3 sentences or if sentence seems like a topic shift
+              if (currentParagraph.length >= 3 || 
+                  sentence.includes('outras reações') ||
+                  sentence.includes('além das') ||
+                  sentence.includes('podem ocorrer') ||
+                  sentence.includes('em pacientes')) {
+                paragraphs.push(currentParagraph.join(' '));
+                currentParagraph = [];
+              }
+            }
+            
+            // Don't forget the last paragraph
+            if (currentParagraph.length > 0) {
+              paragraphs.push(currentParagraph.join(' '));
+            }
+            
+            return `## ${title}\n\n${paragraphs.join('\n\n')}`;
+          }
         }).join('\n\n');
 
         const taggerElapsed = Date.now() - taggerStartTime;
